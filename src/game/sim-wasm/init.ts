@@ -89,8 +89,8 @@ import __wbg_init, {
   unit_force_water_surface_depth_world,
   unit_force_water_fraction,
   unit_force_runtime_clear,
-  unit_water_damage_step_pool,
-  unit_water_damaged_entity_slots_ptr,
+  unit_environment_damage_step_pool,
+  unit_environment_damaged_entity_slots_ptr,
   render_unit_pose_compute,
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
@@ -984,8 +984,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
         unitForceRuntimeClear: unit_force_runtime_clear,
-        unitWaterDamageStepPool: unit_water_damage_step_pool,
-        unitWaterDamagedEntitySlotsPtr: unit_water_damaged_entity_slots_ptr,
+        unitEnvironmentDamageStepPool: unit_environment_damage_step_pool,
+        unitEnvironmentDamagedEntitySlotsPtr: unit_environment_damaged_entity_slots_ptr,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
@@ -1626,6 +1626,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSnapshotVisibilityContractTest();
         const { runSensorSharingContractTest } = await import('../network/sensorSharingContractTest');
         runSensorSharingContractTest();
+        const { runAudioEventVisibilityContractTest } = await import('../network/audioEventVisibilityContractTest');
+        runAudioEventVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
         runSnapshotBufferContractTest();
         const { runCommandHotkeysContractTest } = await import('../input/commandHotkeysContractTest');
@@ -1757,6 +1759,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSensorSignatureRig3DContractTest();
         const { runSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runSurfaceChart3DContractTest();
+        const { runRenderTextures3DContractTest } = await import('../render3d/RenderTextures3DContractTest');
+        runRenderTextures3DContractTest();
         const { runDirectionalTravelSlotSurfaceChart3DContractTest } = await import('../render3d/SurfaceChart3DContractTest');
         runDirectionalTravelSlotSurfaceChart3DContractTest();
         const { runTurretAimPose3DContractTest } = await import('../render3d/TurretAimPose3DContractTest');

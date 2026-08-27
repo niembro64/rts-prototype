@@ -4,6 +4,7 @@
 // grid tint, so gameplay terrain and visible terrain remain one shared mesh.
 
 import * as THREE from 'three';
+import { gateTerrainTexturesFragment, getRenderTexturesUniform } from './RenderTextures3D';
 import {
   clipHeightPolygon2D,
   type HeightPolygonVertex2D,
@@ -989,6 +990,9 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uGroundDetailTexture = this.groundDetailTextureUniform;
       shader.uniforms.uGroundDetailTileWorldSize = this.groundDetailTileWorldSizeUniform;
       shader.uniforms.uGroundDetailEnabled = this.groundDetailEnabledUniform;
+      // The one global textures switch (CLIENT TEX): multiplied into every
+      // texture term of this shader by gateTerrainTexturesFragment below.
+      shader.uniforms.uTexturesEnabled = getRenderTexturesUniform();
       shader.uniforms.uGroundBaseColor = this.groundBaseColorUniform;
       shader.uniforms.uGroundDetailContrast = this.groundDetailContrastUniform;
       shader.uniforms.uGroundDetailHeightMin = this.groundDetailHeightMinUniform;
@@ -1085,6 +1089,7 @@ export class TerrainTileRenderer3D {
             'uniform sampler2D uGroundDetailTexture;',
             'uniform float uGroundDetailTileWorldSize;',
             'uniform float uGroundDetailEnabled;',
+            'uniform float uTexturesEnabled;',
             'uniform vec3 uGroundBaseColor;',
             'uniform float uGroundDetailContrast;',
             'uniform float uGroundDetailHeightMin;',
@@ -1477,6 +1482,7 @@ export class TerrainTileRenderer3D {
             '#include <dithering_fragment>',
           ].join('\n'),
         );
+      shader.fragmentShader = gateTerrainTexturesFragment(shader.fragmentShader);
     };
     this.terrainMaterial.customProgramCacheKey = () =>
       'authoritative-terrain-weathering-wallwear-v54';

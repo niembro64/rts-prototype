@@ -47,6 +47,7 @@
 // the map was carrying.
 
 import * as THREE from 'three';
+import { getRenderTexturesUniform } from './RenderTextures3D';
 import {
   SOIL_SUBSTANCE_TILE_WORLD_SIZE,
   VEGETATION_WEATHERING,
@@ -238,7 +239,9 @@ export function patchVegetationWeathering(
 
   const cfg = VEGETATION_WEATHERING;
   const uniforms: Record<string, { value: unknown }> = {
-    uVegWeatherEnabled: { value: 1 },
+    // Weathering is texture: it rides the one global textures switch, so
+    // TEX off leaves every prop its flat base colour.
+    uVegWeatherEnabled: getRenderTexturesUniform(),
     uVegWeatherNoise: { value: getWeatheringNoiseTexture() },
     uVegWeatherSoil: { value: getSoilSubstanceTexture() },
     uVegWeatherNoiseTileWorldSize: { value: cfg.noiseTileWorldSize },

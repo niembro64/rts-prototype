@@ -765,7 +765,11 @@
         not. A shimmering blip is indistinguishable from a moving one, and a contact that has come
         to a stop has to read as stopped. Uncertainty is carried by what the blip withholds &mdash;
         no team colour, no body, no identity &mdash; and by its reduced alpha, never by moving it
-        away from where the return was actually heard.
+        away from where the return was actually heard. Because it is drawn in the world it is
+        occluded by the world: a ridge or a forest standing between the camera and the return hides
+        the blip exactly as it hides the MIN glyph the blip stands in for. A contact is knowledge of
+        <em>where</em>, not a marker that burns through terrain; the minimap already carries the
+        unoccluded view.
       </p>
       <p>
         Contact membership still arrives on recipient-filtered presentation snapshots, but a blip
@@ -795,7 +799,10 @@
         <strong>Emissions live on the same tiers.</strong> A shot, missile, rocket or beam belongs
         to the side that fired it, so the recipient&rsquo;s own and allied emissions are always sent
         and drawn in full wherever they fly &mdash; a player watches their own artillery land in the
-        dark. An enemy emission is a point body and earns exactly what an enemy body earns where it
+        dark. That includes the landing itself: the emission&rsquo;s terminal event &mdash; its
+        detonation, its payload-less expiry, or its splash into water &mdash; is delivered to its own
+        side in full wherever it happens, never demoted to earshot audio and never dropped, so every
+        explosion a side causes is an explosion that side sees. An enemy emission is a point body and earns exactly what an enemy body earns where it
         is: inside full sight it is the real projectile; inside radar or sonar coverage but outside
         sight it is the same anonymous contact dot, a white core in a black ring at the point&rsquo;s
         own altitude, with no shot blueprint, no owner colour and no trajectory; outside every lane it
@@ -2195,7 +2202,7 @@
         <li><strong>HIGH</strong> is the close rung: the complete authored visual and its high geometry tier.</li>
         <li><strong>MED</strong> is the middle rung: the same authored assembly at its medium geometry and feature budget.</li>
         <li><strong>LOW</strong> is the far rung: the same authored assembly at its low geometry and feature budget. LOW is still real geometry; it is not an implicit removal rule, and it is deliberately the widest band of the three. An entity leaves LOW only when it has become too small on screen to be worth rendering at all &mdash; a handful of pixels across &mdash; not merely when it is far away.</li>
-        <li><strong>MIN</strong> is the entity-geometry floor: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. MIN removes unreadable entity and vegetation geometry, not gameplay events.</li>
+        <li><strong>MIN</strong> is the entity-geometry floor: once AUTO takes an entity below the glyph threshold, its strategic collision-shape glyph fades in over the still-opaque LOW model and then replaces it. MIN removes unreadable entity geometry and blade vegetation, not gameplay events. A tree does not vanish at MIN: it becomes one tetrahedron standing on its root whose base spans the canopy and whose apex is its authored height, so a strategic zoom still reads a forest as a forest &mdash; one instanced triangle-pyramid per tree, in the same flat foliage material as the LOW crown. Grass and seaweed, which have no silhouette worth a pixel at that size, stop drawing.</li>
       </ul>
       <p>
         This ladder applies to every visual part of an entity together:
@@ -2672,7 +2679,12 @@
         <li><strong>Bot</strong> &mdash; one authored biped cycle shared by both legs, with the
         second leg exactly half a cycle behind the first. The shoes are ordinary lower-body animation
         pieces: they face with the hips, remain flat through stance, and use a small toe/heel pitch
-        through recovery. They do not own terrain footprints or slope-solving state.</li>
+        through recovery. They do not own terrain footprints or slope-solving state. The rig is
+        shared by two physics presets that separate the amphibious from the non-amphibious bots
+        exactly as <code>tank</code> / <code>amphibious-tank</code> do: <code>bot</code> is a land
+        bot whose waypoints never enter water and which drowns like a tank once its origin is under
+        the plane, and <code>amphibious-bot</code> walks the seabed. Only the Commander and the Rex
+        are amphibious; every other biped is a land bot.</li>
         <li><strong>Amphibian</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
         separate foot. On land they use a diagonal, leg-like support gait; as the physical
         submerged fraction rises they continuously unfold into wing-like paddles. The visual
@@ -2703,9 +2715,9 @@
         may refine a footprint with its real planted foot.
       </p>
       <ul class="rule-list">
-        <li>A small tire keeps exactly one mutable leading quad between its last committed rut edge and the current wheel contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the tire even while the tire has moved less than one emission interval.</li>
-        <li>A continuous tread belt has a large contact patch and retains distance-spaced committed quads. Feet and flippers retain plant-transition stamps. The wheel-specific leading edge must not add per-frame mark allocations to either family.</li>
-        <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per wheel, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
+        <li>Every trail contact &mdash; a tire or a tread side &mdash; keeps exactly one mutable leading quad between its last committed rut edge and the current contact. That quad is rewritten in place on every ground-print update, becomes an ordinary fading mark at the density-controlled spacing boundary, and hands the same edge to its successor. The visible rut therefore reaches the contact even while it has moved less than one emission interval. Treads once kept only the distance-spaced commits on the theory that a large contact patch hides the gap; a narrow belt on a small tank showed the same dashed gap the tires had, so the one rule now covers both families.</li>
+        <li>Feet and flippers retain plant-transition stamps. The leading edge must not add per-frame mark allocations to any family: a leading mark is allocated once per emission interval and rewritten until it commits.</li>
+        <li>Ground-print work remains bounded by contacts plus live marks: at most one mutable leading mark per trail contact, one shared merged GPU buffer, and the existing density, lifetime, retirement, and hard-cap policy.</li>
       </ul>
 
       <h3>One rendered root pose owns every attachment</h3>
@@ -4766,7 +4778,9 @@
         without replacing the host&rsquo;s team colour or turning the whole silhouette into a
         warning sign. Placement is authored once in
         <code>constructionVisualConfig.json</code>: the Commander uses a small dorsal collar,
-        the Construction Drone a tail-boom sleeve, the Construction Submarine its rear propeller
+        the two Construction Bots a chest panel and paired shoulder sleeves on their heavy yoke
+        (heavy-set builders: limbs at the Commander&rsquo;s proportion, not a scout&rsquo;s, and
+        the same right-hand tool arm), the Construction Drone a tail-boom sleeve, the Construction Submarine its rear propeller
         guard&rsquo;s mirrored side plates, both Queens a neck collar, and the three Universal
         Fabricators exactly 1, 2, and 3 evenly spaced chamfered clamp boxes at T1/T2/T3. A thin
         stationary inner race supports a larger rotating outer race; each box is mounted on the
@@ -5042,6 +5056,19 @@
         <li>&ldquo;Untextured&rdquo; is not a reachable state. A surface with no chart is not bare; it is plain material, and the grain is what plain material looks like.</li>
       </ul>
 
+      <p>
+        There is one switch for all of it. The CLIENT bar&rsquo;s <strong>TEX</strong> toggle is
+        the global textures switch, not a units-only convenience: off, every surface in the world
+        falls back to its flat authored base colour at once &mdash; the entity charts and substance
+        grain, the terrain&rsquo;s ground and rock detail and its broad surface fields, ore detail
+        and its edge grime, plateau wall wear, tree and grass maps with their weathering, and the
+        sky panorama. Nothing textured is exempt, because the point of the switch is a true A/B
+        against the untextured look: a surface that stayed textured while its neighbour went flat
+        would be a second, unauthored quality tier. Every textured material consumes one shared
+        renderer-wide uniform or one registered reader (<code>RenderTextures3D</code>), so the
+        flip is one write, never a walk, and a renderer built mid-session picks the current state
+        up on registration.
+      </p>
       <h3>The grain projects in the object&rsquo;s own frame, corrected for scale</h3>
       <p>
         This is <strong>Materials Are Independent Of Shape</strong> made
@@ -5456,6 +5483,16 @@
         <strong>balls travelling down the tube mean the host is gaining that resource</strong>
         (production, reclaim, conversion output), and <strong>balls travelling up the tube mean the
         host is spending it</strong> (conversion input, upkeep, or another overlaid economy debit).
+      </p>
+      <p>
+        One visual vocabulary draws every pylon. The tube is an open lattice mast &mdash; three
+        opaque legs on the pylon&rsquo;s footprint and a few dark rings along the shaft &mdash; solid
+        structure that still leaves the bore visible for the balls riding it. The head is chosen by
+        where the pylon meets the world: a resource-coloured collar caps the mast on the extractor
+        and the converter; the solar collector adds a sky-facing dish above its collar because its
+        source is above it; the wind turbine adds nothing, because its nacelle rides the mast top
+        and is the head. The earlier pair of semi-transparent straws capped by a resource-coloured
+        tetrahedron was one shape stamped on every host and is gone.
       </p>
       <p>
         The tip conserves. It is a pass-through, never a spawn and never a sink:
@@ -5940,7 +5977,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, drone, and plane profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, two-domain <code>navigation</code>, and separate environmental hazards. Every unit has positive emergency water propulsion. Waypoint-valid cells own intentional, supportable destinations; move-valid cells are derived from active physical propulsion, and directed recovery edges allow a displaced body to return without authorizing water shortcuts. Terrain angle has no global ceiling: dry, bed-supported wet MOVE, and bed-supported wet WAYPOINT envelopes use exact mass, gravity, the local normal, <code>&mu;N</code>, medium propulsion, and one 85% actuator reserve, while air and fluid-supported water ignore lakebed slope. Ground has dimensionless static friction plus explicit tangential and angular damping rates; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. Water damage is a universal numeric rate sampled only at the body origin; water-safe units author zero. The loader validates this hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
+        <li>Make locomotion one explicit physical profile expanded onto every runtime unit: <code>actuator</code>, <code>motionControl</code>, <code>surfaceFollowing</code>, two-domain <code>navigation</code>, and separate environmental hazards. Every unit has positive emergency water propulsion. Waypoint-valid cells own intentional, supportable destinations; move-valid cells are derived from active physical propulsion, and directed recovery edges allow a displaced body to return without authorizing water shortcuts. Terrain angle has no global ceiling: dry, bed-supported wet MOVE, and bed-supported wet WAYPOINT envelopes use exact mass, gravity, the local normal, <code>&mu;N</code>, medium propulsion, and one 85% actuator reserve, while air and fluid-supported water ignore lakebed slope. Ground has dimensionless static friction plus explicit tangential and angular damping rates; air and water each have one named isotropic linear/angular damping profile. Surface-following sources are unit-authored forces and their required <code>surfaceLiftResponse</code> is exactly <code>{ randomizationAmount: 0, ema: 0 }</code>, so the force is deterministic and unfiltered. Air and water use complementary occupancy fractions, navigation is explicit rather than inferred from the visual rig, and every acceleration is force divided by actual mass. Water damage is a universal numeric rate sampled only at the body origin; water-safe units author zero. Land damage is its mirror for water-only hulls: a rate applied while the whole body sits above the water plane (origin minus radius at or above it), so a beached submarine or corvette dies the way a drowned tank does, while a hull pitching at the surface never burns; land-safe units author zero. The loader validates this hierarchy and compiles it into flat Rust/WASM rows without duplicating the model.</li>
         <li>Apply gravity to every force-integrated mass body every tick; thrust-guided projectiles cancel it inside their bounded homing acceleration, while explicitly constant-speed-guided munitions preserve their complete velocity magnitude under a validated zero-thrust, zero-damping, zero-gravity kinematic policy. Never add a generic <code>ignoresGravity</code> flag.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

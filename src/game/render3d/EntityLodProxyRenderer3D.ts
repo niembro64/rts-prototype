@@ -33,6 +33,15 @@ export const ENTITY_LOD_PROXY_TRANSITION_DEPTH_WRITE = false;
 const ENTITY_LOD_PROXY_FINAL_RENDER_ORDER = 3;
 export const ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER =
   TRANSPARENT_RENDER_ORDER_3D.entityParts + 0.25;
+/** A radar/sonar contact blip is drawn where the return was heard and obeys
+ *  the same world occlusion as the MIN glyph it stands in for: a ridge or a
+ *  forest in front of the point hides it. It is still a cross-fading overlay
+ *  (vision alpha), so like a transition glyph it tests depth without writing
+ *  its fake sphere depth over entity parts, and it blends in the glyph band
+ *  below the water surface pass. */
+export const CONTACT_BLIP_DEPTH_TEST = true;
+export const CONTACT_BLIP_DEPTH_WRITE = false;
+export const CONTACT_BLIP_RENDER_ORDER = ENTITY_LOD_PROXY_TRANSITION_RENDER_ORDER;
 
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
@@ -647,16 +656,27 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
 export class LodProxyPointBatchRenderer3D {
   private readonly batch = createProxyPointBatch(true);
 
+  /** The depth/order policy actually installed on the live batch, so a
+   *  contract can pin the object rather than only the constants. */
+  get depthPolicy(): Readonly<{ depthTest: boolean; depthWrite: boolean; renderOrder: number }> {
+    return {
+      depthTest: this.batch.material.depthTest,
+      depthWrite: this.batch.material.depthWrite,
+      renderOrder: this.batch.points.renderOrder,
+    };
+  }
+
   constructor(
     private readonly world: THREE.Group,
     private readonly canvas?: HTMLCanvasElement,
   ) {
-    // Contacts are HUD knowledge, not physical bodies. Once a radar/sonar
-    // return is earned it must remain legible rather than being buried by the
-    // terrain whose ridge test already gated the contact.
-    this.batch.material.depthTest = false;
-    this.batch.material.depthWrite = false;
-    this.batch.points.renderOrder = TRANSPARENT_RENDER_ORDER_3D.entityParts + 0.5;
+    // A contact is a world mark, not a HUD overlay: it is hidden by the
+    // terrain and vegetation in front of it exactly like the MIN glyph
+    // (see CONTACT_BLIP_DEPTH_TEST). The earlier depthTest=false made blips
+    // shine through ridges and forests.
+    this.batch.material.depthTest = CONTACT_BLIP_DEPTH_TEST;
+    this.batch.material.depthWrite = CONTACT_BLIP_DEPTH_WRITE;
+    this.batch.points.renderOrder = CONTACT_BLIP_RENDER_ORDER;
     this.world.add(this.batch.points);
   }
 

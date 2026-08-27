@@ -131,8 +131,9 @@ import {
   buildEnvironmentGrassLodGeometry,
   configureEnvironmentMaterialFogShading,
   createEnvironmentLowTreeCrownGeometry,
+  createEnvironmentMinTreeGeometry,
   environmentLodFlatMaterialSpec,
-  environmentPropVisibleAtDetailRung,
+  environmentPropTierForDetailRung,
   environmentPropUsesGrassPresentation,
   patchEnvironmentFoliageLighting,
 } from './EnvironmentPropRenderer3D';
@@ -198,7 +199,10 @@ const STRUCTURE_TRIANGLE_BUDGETS: Record<StructureBlueprintId, TierCounts> = {
   // anchor-signature invariant forbids dropping parts at a rung, so the far
   // ceiling has to carry all sixteen; the rams themselves are already built a
   // geometry rung below the body. Still under the converter and fabricator.
-  buildingSolar: { close: 1600, mid: 700, far: 400 },
+  // Re-baselined 2026-08-27 when the resource pylon became a lattice mast
+  // (three legs, rings) with a collar and, on solar only, a sky-facing dish:
+  // +18 triangles at the far rung over the old two-straw pylon.
+  buildingSolar: { close: 1600, mid: 700, far: 420 },
   buildingWind: { close: 1100, mid: 550, far: 300 },
   buildingExtractor: { close: 800, mid: 450, far: 260 },
   buildingExtractorT2: { close: 1000, mid: 550, far: 340 },
@@ -643,7 +647,12 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
 }
 
 function runBotBodySeamContracts(): void {
-  for (const unitId of ['unitHuman', 'unitCommander'] as const) {
+  for (const unitId of [
+    'unitHuman',
+    'unitCommander',
+    'unitConstructionBot',
+    'unitAdvancedConstructionBot',
+  ] as const) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
     const body = blueprint.bodyShape;
@@ -2054,10 +2063,28 @@ function runReferenceGeometryCountContracts(): void {
 
 function runEnvironmentLodMaterialContracts(): void {
   assertContract(
-    !environmentPropVisibleAtDetailRung(DETAIL_RUNG_GLYPH) &&
-      environmentPropVisibleAtDetailRung(DETAIL_RUNG_FAR),
-    'trees, grass, and seaweed disappear at MIN/GLYPH but remain visible at LOW',
+    environmentPropTierForDetailRung(DETAIL_RUNG_GLYPH, 'tree') === 'min' &&
+      environmentPropTierForDetailRung(DETAIL_RUNG_GLYPH, 'grass') === null &&
+      environmentPropTierForDetailRung(DETAIL_RUNG_GLYPH, 'seaweed') === null &&
+      environmentPropTierForDetailRung(DETAIL_RUNG_FAR, 'tree') === 'far' &&
+      environmentPropTierForDetailRung(DETAIL_RUNG_FAR, 'grass') === 'far' &&
+      environmentPropTierForDetailRung(DETAIL_RUNG_FAR, 'seaweed') === 'far',
+    'trees keep a MIN tetrahedron at the glyph rung while grass and seaweed stop drawing; every kind stays LOW geometry at the far rung',
   );
+  const minTree = createEnvironmentMinTreeGeometry(30, 200);
+  minTree.computeBoundingBox();
+  const minTreeBounds = minTree.boundingBox!;
+  assertContract(
+    minTree.getAttribute('position').count === 12 &&
+      Math.abs(minTreeBounds.min.y) < 1e-6 &&
+      Math.abs(minTreeBounds.max.y - 200) < 1e-6 &&
+      Math.abs(minTreeBounds.max.x - 30) < 1e-6 &&
+      Math.abs(minTreeBounds.min.x + 30) < 1e-6 &&
+      Math.abs(minTreeBounds.max.z - 30) < 1e-6 &&
+      Math.abs(minTreeBounds.min.z + 30) < 1e-6,
+    'the MIN tree is one four-face tetrahedron standing on the root, spanning the canopy width and the authored height',
+  );
+  minTree.dispose();
   assertContract(
     environmentPropUsesGrassPresentation('grass') &&
       environmentPropUsesGrassPresentation('seaweed') &&

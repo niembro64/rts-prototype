@@ -133,6 +133,8 @@ export function buildMetalExtractorMesh(
     coneAngle: PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD,
     channel: 1,
     geometryTier: getActiveBuildingGeometryTier(),
+    // Metal rises from the deposit below; the rotor hub sits on the collar.
+    head: 'collar',
   });
   for (const mesh of metalPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));

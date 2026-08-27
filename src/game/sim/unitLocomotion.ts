@@ -245,6 +245,10 @@ export function createUnitLocomotion(
     `${physicsPresetId}.environmentalHazards.waterDamagePerSecond`,
     environmentalHazards.waterDamagePerSecond,
   );
+  assertUnitLocomotionNonNegativeFinite(
+    `${physicsPresetId}.environmentalHazards.landDamagePerSecond`,
+    environmentalHazards.landDamagePerSecond,
+  );
   return runtime;
 }
 

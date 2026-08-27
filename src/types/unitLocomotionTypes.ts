@@ -95,6 +95,10 @@ export type UnitLocomotion = {
     /** Hit points lost per second while the authoritative body origin is
      * strictly below the water plane. Zero makes the unit water-safe. */
     waterDamagePerSecond: number;
+    /** Hit points lost per second while the whole authoritative body sits
+     * above the water plane (origin minus radius at or above it) — a hull
+     * resting on dry ground. Zero makes the unit land-safe. */
+    landDamagePerSecond: number;
   };
   actuator: {
     /** Axis through which the locomotion actuator can apply horizontal force.

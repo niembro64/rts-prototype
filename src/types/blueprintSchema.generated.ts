@@ -716,6 +716,7 @@ export type UnitUnitLocomotionBlueprintPhysics = {
 
 export type UnitLocomotionEnvironmentalHazardPolicy = {
   waterDamagePerSecond: number;
+  landDamagePerSecond: number;
 };
 
 export type DroneConfig = {

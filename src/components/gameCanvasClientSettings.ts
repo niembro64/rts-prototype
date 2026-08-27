@@ -155,7 +155,7 @@ import type {
   PathingDebugUnitId,
 } from '../types/client';
 import type { RenderMode } from '../types/graphics';
-import { setSurfaceChartEnabled } from '@/game/render3d/SurfaceChartMaterial3D';
+import { setRenderTexturesEnabled } from '@/game/render3d/RenderTextures3D';
 import {
   setAmbientIntensityScale,
   setBackgroundIntensityScale,
@@ -307,7 +307,7 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = getLocomotionMarks();
     teamTrim.value = getTeamTrim();
     surfaceTexture.value = getSurfaceTexture();
-    setSurfaceChartEnabled(surfaceTexture.value);
+    setRenderTexturesEnabled(surfaceTexture.value);
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     entityShadows.value = getEntityShadows();
@@ -367,6 +367,10 @@ export function useGameCanvasClientSettings({
   // whatever scales are current, so pushing here is safe whether or not the
   // world scene exists yet.
   applyLightRuntimeState();
+  // Same class of bug for textures: the stored TEX state used to reach the
+  // renderer only on a mode switch or DEFAULTS, so a refresh showed the
+  // button dark while every surface still drew textured.
+  setRenderTexturesEnabled(surfaceTexture.value);
 
   watch(currentClientMode, (mode) => {
     setClientMode(mode);
@@ -575,9 +579,9 @@ export function useGameCanvasClientSettings({
     const newValue = !surfaceTexture.value;
     setSurfaceTexture(newValue);
     surfaceTexture.value = newValue;
-    // The charted materials read one shared uniform, so this reaches every
-    // pool without a walk and without a shader recompile.
-    setSurfaceChartEnabled(newValue);
+    // One global switch: charts, terrain layers, vegetation maps and the sky
+    // panorama all read it (RenderTextures3D), most through one shared uniform.
+    setRenderTexturesEnabled(newValue);
   }
 
   function toggleSmokeTrails(): void {

@@ -18,6 +18,14 @@ import {
 import { buildBuildingShape, type BuildingShape } from './BuildingShape3D';
 import { applyBuildingOperationalPose } from './BuildingOperationalRig3D';
 import { applySolarCollectorPetalPose } from './SolarCollectorMesh3D';
+import { WIND_HUB_NAME } from './WindTurbineMesh3D';
+import {
+  WIND_BLADE_ROOT_HALF_CHORD,
+  WIND_BLADE_ROOT_HALF_THICKNESS,
+  WIND_BLADE_TIP_HALF_CHORD,
+  WIND_BLADE_TIP_HALF_THICKNESS,
+  getWindBladeGeometry,
+} from './BuildingMeshPrimitives3D';
 import {
   applyFabricatorConstructionRingPose,
   clockwiseExtractorRotorYaw,
@@ -103,6 +111,37 @@ function assertSpecializedOperationalRig(
       }),
       'wind OFF pose must pitch and feather its rotor blades',
     );
+    // The hub must swallow the pitched blade roots: a root twisted by the
+    // authored pitch spans chord·sin(pitch) + thickness·cos(pitch) across the
+    // rotor axis, and a hub thinner than that lets the roots poke out.
+    const hub = shape.windRig.rotor.getObjectByName(WIND_HUB_NAME);
+    const blade = shape.windRig.rotor.children.find((child) => child.userData.windBlade !== undefined);
+    assertContract(hub !== undefined && blade !== undefined, 'wind rotor must carry a named hub and blades');
+    const pitch = Math.abs(blade.rotation.y);
+    const rootSweptThickness = 2 * (
+      WIND_BLADE_ROOT_HALF_CHORD * blade.scale.x * Math.sin(pitch) +
+      WIND_BLADE_ROOT_HALF_THICKNESS * blade.scale.z * Math.cos(pitch)
+    );
+    assertContract(
+      pitch > 0.01 && hub.scale.y >= rootSweptThickness,
+      `wind hub (${hub.scale.y.toFixed(2)}) must be at least as thick as the pitched blade root sweep (${rootSweptThickness.toFixed(2)})`,
+    );
+    // Blades end in a real chopped section, never a zero-area point.
+    for (const tier of ['close', 'mid', 'far'] as const) {
+      const positions = getWindBladeGeometry(tier).getAttribute('position');
+      const tipBase = positions.count - 4;
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = tipBase; i < positions.count; i++) {
+        minX = Math.min(minX, positions.getX(i)); maxX = Math.max(maxX, positions.getX(i));
+        minZ = Math.min(minZ, positions.getZ(i)); maxZ = Math.max(maxZ, positions.getZ(i));
+      }
+      assertContract(
+        WIND_BLADE_TIP_HALF_CHORD > 0 && WIND_BLADE_TIP_HALF_THICKNESS > 0 &&
+          Math.abs((maxX - minX) - 2 * WIND_BLADE_TIP_HALF_CHORD) < 1e-6 &&
+          Math.abs((maxZ - minZ) - 2 * WIND_BLADE_TIP_HALF_THICKNESS) < 1e-6,
+        `wind blade ${tier} tip must be a chopped section, not a point`,
+      );
+    }
     return;
   }
   if (id === 'buildingExtractor' || id === 'buildingExtractorT2') {

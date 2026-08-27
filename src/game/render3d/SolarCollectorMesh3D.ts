@@ -575,6 +575,8 @@ export function buildSolarCollector(
     coneAngle: PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD,
     channel: 0,
     geometryTier: getActiveBuildingGeometryTier(),
+    // The collector's world source is the sky: the mast ends in a dish.
+    head: 'receiver',
   });
   for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));

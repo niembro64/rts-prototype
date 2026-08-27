@@ -74,11 +74,23 @@ function getBuildingConeGeometry(
 }
 const windBladeGeomByTier = new Map<PrimitiveGeometryTier, THREE.BufferGeometry>();
 
-function getWindBladeGeometry(
+export function getWindBladeGeometry(
   tier: PrimitiveGeometryTier = activeBuildingGeometryTier,
 ): THREE.BufferGeometry {
   return getOrCreate(windBladeGeomByTier, tier, () => createWindBladeGeometry(tier));
 }
+
+/** Blade root section in unit blade space (X = chord, Z = thickness). The
+ *  hub that carries the blades is sized from this root swept through the
+ *  authored pitch — a pitched root is thicker across the rotor axis than the
+ *  blade itself, and a hub thinner than that lets the root poke out of it. */
+export const WIND_BLADE_ROOT_HALF_CHORD = 0.68;
+export const WIND_BLADE_ROOT_HALF_THICKNESS = 0.92;
+/** The tip keeps a real section: a chopped, squared-off end rather than a
+ *  zero-area point (which also shaded badly, its four collapsed vertices
+ *  averaging into one degenerate normal). */
+export const WIND_BLADE_TIP_HALF_CHORD = 0.2;
+export const WIND_BLADE_TIP_HALF_THICKNESS = 0.26;
 
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 export const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
@@ -119,14 +131,23 @@ export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_P
 function createWindBladeGeometry(tier: PrimitiveGeometryTier): THREE.BufferGeometry {
   // Medium and Low share the minimal closed wedge. The old Low blade was a
   // two-triangle sheet with zero volume, which made the rotor visibly bony.
-  const stations = tier === 'close' ? [
-    { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
-    { y: 0.48, halfW: 0.376, halfT: 0.509, sweep: 0.025 },
-    { y: 1.0, halfW: 0.0, halfT: 0.0, sweep: 0.08 },
-  ] : [
-    { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
-    { y: 1.0, halfW: 0.0, halfT: 0.0, sweep: 0.08 },
-  ];
+  // Every tier ends in the same chopped tip section so the blade never
+  // tapers to a needle.
+  const root = {
+    y: 0.06,
+    halfW: WIND_BLADE_ROOT_HALF_CHORD,
+    halfT: WIND_BLADE_ROOT_HALF_THICKNESS,
+    sweep: -0.02,
+  };
+  const tipStation = {
+    y: 1.0,
+    halfW: WIND_BLADE_TIP_HALF_CHORD,
+    halfT: WIND_BLADE_TIP_HALF_THICKNESS,
+    sweep: 0.08,
+  };
+  const stations = tier === 'close'
+    ? [root, { y: 0.48, halfW: 0.4, halfT: 0.54, sweep: 0.025 }, tipStation]
+    : [root, tipStation];
   const positions: number[] = [];
   for (const s of stations) {
     positions.push(

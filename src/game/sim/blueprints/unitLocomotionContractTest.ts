@@ -42,6 +42,7 @@ type ExpectedLocomotionDomain = Readonly<{
   allowInAir: boolean;
   allowInWater: boolean;
   waterFatal: boolean;
+  landFatal: boolean;
 }>;
 
 /**
@@ -50,49 +51,49 @@ type ExpectedLocomotionDomain = Readonly<{
  * chassis; navigation and survival stay deliberate data decisions.
  */
 const EXPECTED_ROSTER_LOCOMOTION: Readonly<Record<string, ExpectedLocomotionDomain>> = {
-  unitHuman: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitJackal: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitLynx: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitDaddy: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitBadger: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitHedgehog: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitMongoose: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitMammoth: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitFormik: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitWidow: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitHippo: { type: 'amphibious-tank', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitSeaTurtle: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitOrca: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitTarantula: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitLoris: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitDragonfly: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitEagle: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitDuck: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitAlbatros: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitQueenBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitQueenTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitCommander: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitRex: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitRadarScout: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitStealthScout: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitDetector: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitRadarJammer: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitMissileRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitClusterArtillery: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitWaterStrider: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitPatrolCorvette: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitPetrel: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false },
-  unitAdvancedConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false },
-  unitAdvancedConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true },
-  unitAdvancedConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true },
-  unitAdvancedConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false },
+  unitHuman: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitJackal: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitLynx: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitDaddy: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitBadger: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitHedgehog: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitMongoose: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitMammoth: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitFormik: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitWidow: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitHippo: { type: 'amphibious-tank', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitSeaTurtle: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitOrca: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: true },
+  unitTarantula: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitLoris: { type: 'tank', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitDragonfly: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: true },
+  unitEagle: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitDuck: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false, landFatal: false },
+  unitAlbatros: { type: 'plane', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitQueenBee: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitQueenTick: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitTransport: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitCommander: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitRex: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitRadarScout: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitStealthScout: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: true },
+  unitDetector: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitRadarJammer: { type: 'amphibian', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitMissileRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitClusterArtillery: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitWaterStrider: { type: 'crawler', allowOnGround: true, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: false },
+  unitPatrolCorvette: { type: 'amphibian', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: true },
+  unitPetrel: { type: 'aerosub', allowOnGround: false, allowInAir: true, allowInWater: true, waterFatal: false, landFatal: false },
+  unitAdvancedConstructionBot: { type: 'bot', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitAdvancedConstructionRover: { type: 'rover', allowOnGround: true, allowInAir: false, allowInWater: false, waterFatal: true, landFatal: false },
+  unitAdvancedConstructionDrone: { type: 'drone', allowOnGround: false, allowInAir: true, allowInWater: false, waterFatal: true, landFatal: false },
+  unitAdvancedConstructionSubmarine: { type: 'submarine', allowOnGround: false, allowInAir: false, allowInWater: true, waterFatal: false, landFatal: true },
 };
 
 
@@ -479,7 +480,8 @@ export function runUnitLocomotionContractTest(): void {
         runtime.navigation.waypoint.allowOnGround === expected.allowOnGround &&
         runtime.navigation.waypoint.allowInAir === expected.allowInAir &&
         runtime.navigation.waypoint.allowInWater === expected.allowInWater &&
-        (runtime.environmentalHazards.waterDamagePerSecond > 0) === expected.waterFatal,
+        (runtime.environmentalHazards.waterDamagePerSecond > 0) === expected.waterFatal &&
+        (runtime.environmentalHazards.landDamagePerSecond > 0) === expected.landFatal,
       `${unitBlueprintId} matches its intended ground, air, and water locomotion`,
     );
     assertContract(
@@ -492,11 +494,32 @@ export function runUnitLocomotionContractTest(): void {
         (expected.waterFatal ? blueprint.hp / 2 : 0),
       `${unitBlueprintId} authors universal numeric water damage; intended water units use zero`,
     );
+    assertContract(
+      runtime.environmentalHazards.landDamagePerSecond ===
+        (expected.landFatal ? blueprint.hp / 2 : 0),
+      `${unitBlueprintId} authors universal numeric land damage; only water-only hulls burn ashore`,
+    );
   }
 
+  // The bot rig is shared by two presets: `bot` is a land bot that drowns
+  // like a tank, `amphibious-bot` walks the seabed. Only the Commander and
+  // the Rex are amphibious.
+  for (const unitBlueprintId of ['unitHuman', 'unitConstructionBot', 'unitAdvancedConstructionBot'] as const) {
+    const landBot = getUnitLocomotion(unitBlueprintId);
+    assertContract(
+      landBot.physicsPresetId === 'bot' &&
+        !landBot.navigation.waypoint.allowInWater &&
+        landBot.environmentalHazards.waterDamagePerSecond > 0,
+      `${unitBlueprintId} is a land bot: no water waypoints and it drowns`,
+    );
+  }
+  assertContract(
+    getUnitLocomotion('unitRex').physicsPresetId === 'amphibious-bot',
+    'Rex is an amphibious bot',
+  );
   const commander = getUnitLocomotion('unitCommander');
   assertContract(
-    commander.physicsPresetId === 'bot' &&
+    commander.physicsPresetId === 'amphibious-bot' &&
       commander.actuator.propulsionAxis === 'waypointForwardOnly' &&
       commander.navigation.waypoint.allowOnGround &&
       commander.navigation.waypoint.allowInWater &&

@@ -993,7 +993,11 @@ export class SnapshotVisibility {
    *    - Own pings. Minimap pings carry the pinger's playerId; the
    *      pinger plus their team see the marker even on fog points.
    *    - attackAlert (victimPlayerId). The victim and their allies see a
-   *      marker at the known damaged unit without revealing the attacker. */
+   *      marker at the known damaged unit without revealing the attacker.
+   *    - Own emission terminals (hit / projectileExpire / waterSplash
+   *      playerId). The side that fired a shot always sees it fly, so it
+   *      always sees where it lands: the explosion is delivered in full
+   *      even in enemy fog and never demoted to earshot audio. */
   isAuthoredByRecipient(authorPlayerId: PlayerId | undefined): boolean {
     return this.isOwnedByRecipientOrAlly(authorPlayerId);
   }

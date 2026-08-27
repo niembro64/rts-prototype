@@ -2948,10 +2948,15 @@
     "UnitLocomotionEnvironmentalHazardPolicy": {
       "type": "object",
       "required": [
-        "waterDamagePerSecond"
+        "waterDamagePerSecond",
+        "landDamagePerSecond"
       ],
       "properties": {
         "waterDamagePerSecond": {
+          "type": "number",
+          "minimum": 0
+        },
+        "landDamagePerSecond": {
           "type": "number",
           "minimum": 0
         }

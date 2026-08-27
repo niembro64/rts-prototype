@@ -193,7 +193,7 @@ function ensureForceBatchCapacity(sim: SimWasm, count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 16;
+const UF_PROFILE_STRIDE = 17;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -233,6 +233,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.resistance.linearDampingRate,
         water.resistance.angularDampingRate,
         loco.environmentalHazards.waterDamagePerSecond,
+        loco.environmentalHazards.landDamagePerSecond,
         loco.actuator.propulsionAxis,
         loco.actuator.turnRateDegreesPerSecond ?? 0,
         loco.motionControl.cruiseWhenUncommanded ? 1 : 0,
@@ -305,6 +306,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
         ? (loco.actuator.turnRateDegreesPerSecond ?? 0) * (Math.PI / 180)
         : 0;
     values[base + 15] = ground.angularDampingRate;
+    values[base + 16] = loco.environmentalHazards.landDamagePerSecond;
     flags[code] =
       (loco.actuator.propulsionAxis !== 'worldPlanar' ? UF_FLAG_PROPULSION_BODY_FORWARD : 0) |
       (loco.actuator.propulsionAxis === 'waypointForwardOnly' ? UF_FLAG_PROPULSION_FORWARD_ONLY : 0) |
@@ -370,15 +372,17 @@ export class UnitForceSystem {
     }
     const sim = getSimWasm()!;
     ensureUnitForceProfileTable(sim);
-    const waterDamagedCount = sim.unitWaterDamageStepPool(dtSec);
+    // Water damage (origin below the plane) and land damage (whole body above
+    // it) in one sweep over every live unit body.
+    const damagedCount = sim.unitEnvironmentDamageStepPool(dtSec);
     const entityViews = entitySlotRegistry.getViews();
-    if (waterDamagedCount > 0) {
+    if (damagedCount > 0) {
       const damagedEntitySlots = new Uint32Array(
         sim.memory.buffer,
-        sim.unitWaterDamagedEntitySlotsPtr(),
-        waterDamagedCount,
+        sim.unitEnvironmentDamagedEntitySlotsPtr(),
+        damagedCount,
       );
-      for (let i = 0; i < waterDamagedCount; i++) {
+      for (let i = 0; i < damagedCount; i++) {
         const entitySlot = damagedEntitySlots[i];
         const entity = entitySlotRegistry.resolveSlot(entitySlot);
         if (entity === undefined || entity.unit === null) continue;

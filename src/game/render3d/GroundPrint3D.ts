@@ -7,11 +7,13 @@
 // Rewrite goals (vs. the original frame-skip design):
 //
 // 1. NO GAPS. Trails are continuous. We sample every contact every frame.
-//    A wheel owns one mutable leading quad from its last committed point to
-//    the live tire contact, then promotes that quad when it reaches `spacing`.
-//    The much larger tread patches retain distance-spaced commits. Every
-//    finished quad spans `lastEmit → current` exactly, so segments butt
-//    edge-to-edge no matter how fast the unit is moving.
+//    Every trail contact — a tire or a tread side — owns one mutable leading
+//    quad from its last committed point to the live contact, then promotes
+//    that quad when it reaches `spacing`. Treads used to keep only
+//    distance-spaced commits, which left a narrow belt (Lynx, Loris) a
+//    dashed gap behind the unit at low density; the live edge closes it for
+//    both families. Every finished quad spans `lastEmit → current` exactly,
+//    so segments butt edge-to-edge no matter how fast the unit is moving.
 //
 // 2. NO MISSED FOOTPRINTS. Leg stamps are emitted on the planted-
 //    unplanted → planted transition, so every
@@ -126,9 +128,9 @@ const LIFETIME_MULT_AT_ZERO_DENSITY = 0.4;
 // more, so the trail stays continuous.
 const SPACING_AT_FULL_DENSITY = 4;
 const SPACING_AT_ZERO_DENSITY = 24;
-// Ignore only sub-float-noise contact jitter. A real wheel displacement,
+// Ignore only sub-float-noise contact jitter. A real contact displacement,
 // however small compared with spacing, must pull its live leading edge.
-const MIN_LIVE_WHEEL_MOTION_SQ = 1e-8;
+const MIN_LIVE_TRAIL_MOTION_SQ = 1e-8;
 
 // ── Stamp dedupe ──
 // A leg sometimes "re-plants" within ~a wu of where it took off
@@ -605,7 +607,6 @@ export class GroundPrint3D {
           bx + contact.localX * cosYaw - contact.localZ * sinYaw,
           by + contact.localX * sinYaw + contact.localZ * cosYaw,
           contact.width,
-          contact.kind,
           spacingSq,
           terrainMode,
         );
@@ -711,15 +712,14 @@ export class GroundPrint3D {
 
   // ── Trail sampling (wheels, tread sides) ──
   // Always invoked, every frame, every contact. Distance gates finished
-  // segments; wheel contacts additionally rewrite one live leading quad.
-  // As long as the contact moves, the trail grows edge-to-edge regardless
-  // of density.
+  // segments; every contact additionally rewrites one live leading quad so
+  // the mark reaches the contact between commits. As long as the contact
+  // moves, the trail grows edge-to-edge regardless of density.
 
   private sampleTrail(
     key: TrailKey,
     cx: number, cz: number,
     width: number,
-    kind: 'wheel' | 'tread',
     spacingSq: number,
     terrainMode: LocomotionTerrainMode,
   ): void {
@@ -740,32 +740,24 @@ export class GroundPrint3D {
     const dx = cx - state.lastEmitX;
     const dz = cz - state.lastEmitY;
     const distSq = dx * dx + dz * dz;
-    if (kind === 'wheel') {
-      if (distSq <= MIN_LIVE_WHEEL_MOTION_SQ) return;
-      const invLen = 1 / Math.sqrt(distSq);
-      this.updateLiveWheelTrail(
-        state,
-        cx,
-        cz,
-        dx * invLen,
-        dz * invLen,
-        width,
-        terrainMode,
-        distSq >= spacingSq,
-      );
-      return;
-    }
-    if (distSq < spacingSq) return;
+    if (distSq <= MIN_LIVE_TRAIL_MOTION_SQ) return;
     const invLen = 1 / Math.sqrt(distSq);
-    const dirX = dx * invLen;
-    const dirZ = dz * invLen;
-    this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width, terrainMode);
+    this.updateLiveTrail(
+      state,
+      cx,
+      cz,
+      dx * invLen,
+      dz * invLen,
+      width,
+      terrainMode,
+      distSq >= spacingSq,
+    );
   }
 
-  /** Stretch one already-allocated wheel mark to the live contact. Once it
+  /** Stretch one already-allocated leading mark to the live contact. Once it
    *  reaches the ordinary trail spacing it becomes the committed predecessor
    *  and the next displacement starts a fresh leading mark from that edge. */
-  private updateLiveWheelTrail(
+  private updateLiveTrail(
     state: TrailState,
     endX: number,
     endY: number,
@@ -945,38 +937,9 @@ export class GroundPrint3D {
   // predecessor is still alive (eviction may have killed it). If
   // alive: bisector miter; if not: square cap.
 
-  private appendMiteredTrail(
-    state: TrailState,
-    endX: number, endY: number,
-    dirX: number, dirZ: number,
-    width: number,
-    terrainMode: LocomotionTerrainMode,
-  ): void {
-    // Allocate first — may evict ANY existing mark including `prev`.
-    const newMark = this.allocateMark();
-    this.writeQuadMask(newMark.slot);
-    this.writeMarkTint(newMark);
-    this.writeMiteredTrailGeometry(
-      state,
-      newMark,
-      endX,
-      endY,
-      dirX,
-      dirZ,
-      width,
-      terrainMode,
-    );
-
-    state.lastEmitX = endX;
-    state.lastEmitY = endY;
-    state.lastDirX = dirX;
-    state.lastDirY = dirZ;
-    state.prevMark = newMark;
-  }
-
   /** Write or rewrite a trail quad and keep its start joined to the latest
-   *  committed predecessor. Both distance-spaced treads and live wheel edges
-   *  share this geometry path. */
+   *  committed predecessor. The live leading edge and its promotion both go
+   *  through this one geometry path. */
   private writeMiteredTrailGeometry(
     state: TrailState,
     mark: Mark,

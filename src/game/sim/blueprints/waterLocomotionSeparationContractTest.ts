@@ -18,6 +18,16 @@ export function runWaterLocomotionSeparationContractTest(): void {
       locomotion.environmentalHazards.waterDamagePerSecond === expectedDamage,
       `${blueprint.unitBlueprintId} authors ${expectedDamage} water damage per second`,
     );
+    // The land mirror: a hull whose waypoints are water-only (no ground, no
+    // air) burns on dry ground at the same universal rate; everything that
+    // may legitimately stand on ground or hover over it authors zero.
+    const waterOnly = !locomotion.navigation.waypoint.allowOnGround &&
+      !locomotion.navigation.waypoint.allowInAir;
+    const expectedLandDamage = waterOnly ? blueprint.hp / 2 : 0;
+    assertContract(
+      locomotion.environmentalHazards.landDamagePerSecond === expectedLandDamage,
+      `${blueprint.unitBlueprintId} authors ${expectedLandDamage} land damage per second`,
+    );
     assertContract(
       locomotion.physics.water.maxPropulsiveForce > 0 &&
         locomotion.navigation.move.allowInWater,

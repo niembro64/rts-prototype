@@ -737,7 +737,7 @@ function resetEveryCustomHotkey(): void {
         >TRIM</BarButton>
         <BarButton
           :active="model.surfaceTexture"
-          title="Apply the procedural trim-sheet texturing to charted surfaces: hull plating, nose facets, sensor housings, barrel fluting, leg hydraulics, and team livery. Only units that have been through the charting pass are affected."
+          title="Draw every texture in the world, or none of them: entity trim-sheet charts and substance grain, terrain ground/rock detail and surface fields, ore detail and its edge grime, plateau wall wear, tree and grass maps with their weathering, and the sky panorama. Off leaves every surface its flat authored base color — a true A/B, not a quality tier."
           @click="model.toggleSurfaceTexture"
         >TEX</BarButton>
         <BarButton

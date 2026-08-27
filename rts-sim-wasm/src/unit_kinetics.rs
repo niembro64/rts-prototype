@@ -33,7 +33,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 59;
 
 /** Direct, SI-style values: force is converted to the simulator's mass scale
  * only at F = ma. There are no hidden force multipliers or coupling factors. */
-pub const UF_PROFILE_STRIDE: usize = 16;
+pub const UF_PROFILE_STRIDE: usize = 17;
 pub(crate) const UF_PROFILE_GROUND_MAX_PROPULSIVE_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_STATIC_FRICTION_COEFFICIENT: usize = 1;
 pub(crate) const UF_PROFILE_GROUND_TANGENTIAL_DAMPING_RATE: usize = 2;
@@ -52,6 +52,9 @@ pub(crate) const UF_PROFILE_WATER_DAMAGE_PER_SECOND: usize = 13;
 /// every other actuator, which keeps the critically damped attitude servo.
 pub(crate) const UF_PROFILE_TURN_RATE_RAD_PER_SEC: usize = 14;
 pub(crate) const UF_PROFILE_GROUND_ANGULAR_DAMPING_RATE: usize = 15;
+/// Hit points per second while the whole body sits above the water plane
+/// (origin minus radius at or above it): a water-only hull on dry ground.
+pub(crate) const UF_PROFILE_LAND_DAMAGE_PER_SECOND: usize = 16;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -68,7 +71,7 @@ pub(crate) struct UnitForceRuntimeTable {
     /// Arrival steering consumes this instead of reconstructing `mu*m*g` on
     /// a fictitious level surface.
     pub(crate) available_ground_force: Vec<f64>,
-    pub(crate) water_damaged_entity_slots: Vec<u32>,
+    pub(crate) environment_damaged_entity_slots: Vec<u32>,
 }
 
 pub(crate) static UNIT_FORCE_PROFILE_TABLE: WasmLazy<UnitForceProfileTable> = WasmLazy::new();
@@ -91,7 +94,7 @@ pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
         water_fraction: Vec::new(),
         ground_contact: Vec::new(),
         available_ground_force: Vec::new(),
-        water_damaged_entity_slots: Vec::new(),
+        environment_damaged_entity_slots: Vec::new(),
     })
 }
 
@@ -155,19 +158,23 @@ pub fn unit_force_runtime_clear() {
     runtime.water_fraction.fill(0.0);
     runtime.ground_contact.fill(0);
     runtime.available_ground_force.fill(0.0);
-    runtime.water_damaged_entity_slots.clear();
+    runtime.environment_damaged_entity_slots.clear();
 }
 
-/// Apply authored water damage to every live unit body, including sleeping
-/// and otherwise inactive bodies. The sole hazard sample is the authoritative
-/// body origin: any origin strictly below the water plane is submerged.
+/// Apply authored environment damage to every live unit body, including
+/// sleeping and otherwise inactive bodies. Two mirrored hazards, both read
+/// from the authoritative body alone: WATER damage while the origin is
+/// strictly below the water plane (a land unit that drowned), and LAND
+/// damage while the whole sphere sits above it — origin minus radius at or
+/// above the plane — which is a water-only hull resting on dry ground and
+/// never a floating hull bobbing at the surface.
 #[wasm_bindgen]
-pub fn unit_water_damage_step_pool(dt_sec: f64) -> u32 {
+pub fn unit_environment_damage_step_pool(dt_sec: f64) -> u32 {
     let p = pool();
     let es = entity_state();
     let profile = unit_force_profile_table();
     let runtime = unit_force_runtime_table();
-    runtime.water_damaged_entity_slots.clear();
+    runtime.environment_damaged_entity_slots.clear();
 
     for entity_slot in 0..es.entity_id.len() {
         if es.entity_id[entity_slot] < 0
@@ -203,24 +210,26 @@ pub fn unit_water_damage_step_pool(dt_sec: f64) -> u32 {
         // (buoyancy reads them), so every live unit keeps its fraction
         // write — but water-safe profiles (zero authored rate) skip the
         // damage math entirely.
-        let rate = profile.values[pbase + UF_PROFILE_WATER_DAMAGE_PER_SECOND];
-        if rate <= 0.0 {
+        let water_rate = profile.values[pbase + UF_PROFILE_WATER_DAMAGE_PER_SECOND];
+        let land_rate = profile.values[pbase + UF_PROFILE_LAND_DAMAGE_PER_SECOND];
+        if water_rate <= 0.0 && land_rate <= 0.0 {
             continue;
         }
-        let damage = unit_water_damage_for_step(p.pos_z[body_slot], rate, dt_sec);
+        let damage = unit_water_damage_for_step(p.pos_z[body_slot], water_rate, dt_sec)
+            + unit_land_damage_for_step(p.pos_z[body_slot], p.radius[body_slot], land_rate, dt_sec);
         if damage > 0.0 {
             es.hp[entity_slot] = (es.hp[entity_slot] - damage).max(0.0);
             es.dirty_mask[entity_slot] |= ENTITY_CHANGED_HP;
-            runtime.water_damaged_entity_slots.push(entity_slot as u32);
+            runtime.environment_damaged_entity_slots.push(entity_slot as u32);
         }
     }
-    runtime.water_damaged_entity_slots.len() as u32
+    runtime.environment_damaged_entity_slots.len() as u32
 }
 
 #[wasm_bindgen]
-pub fn unit_water_damaged_entity_slots_ptr() -> *const u32 {
+pub fn unit_environment_damaged_entity_slots_ptr() -> *const u32 {
     unit_force_runtime_table()
-        .water_damaged_entity_slots
+        .environment_damaged_entity_slots
         .as_ptr()
 }
 
@@ -440,6 +449,26 @@ fn unit_water_damage_for_step(origin_z: f64, damage_per_second: f64, dt_sec: f64
         return 0.0;
     }
     damage_per_second.max(0.0) * dt_sec.max(0.0)
+}
+
+/// The land mirror of the water rule: the body must be ENTIRELY out of the
+/// water (its lowest point at or above the plane) before it burns, so a hull
+/// pitching at the surface or stranded in a shallow puddle is untouched while
+/// a hull sitting on a beach is not.
+#[inline]
+fn unit_land_damage_for_step(
+    origin_z: f64,
+    radius: f64,
+    damage_per_second: f64,
+    dt_sec: f64,
+) -> f64 {
+    if !origin_z.is_finite() || !radius.is_finite() || damage_per_second <= 0.0 {
+        return 0.0;
+    }
+    if origin_z - radius.max(0.0) < TERRAIN_WATER_LEVEL {
+        return 0.0;
+    }
+    damage_per_second * dt_sec.max(0.0)
 }
 
 #[inline]
@@ -2398,6 +2427,26 @@ mod tests {
             previous_error = error;
         }
         assert!(previous_error < 1.0e-6);
+    }
+
+    #[test]
+    fn land_damage_needs_the_whole_body_above_the_water_plane() {
+        // Bottom of the sphere exactly at the plane: on the beach, burning.
+        assert_near(
+            unit_land_damage_for_step(TERRAIN_WATER_LEVEL + 20.0, 20.0, 90.0, 0.5),
+            45.0,
+        );
+        // Origin above the plane but the hull still dips into the water:
+        // a surfaced or stranded-in-a-puddle hull is not on land.
+        assert_near(
+            unit_land_damage_for_step(TERRAIN_WATER_LEVEL + 19.999, 20.0, 90.0, 0.5),
+            0.0,
+        );
+        // Land-safe units author zero and never burn ashore.
+        assert_near(
+            unit_land_damage_for_step(TERRAIN_WATER_LEVEL + 100.0, 5.0, 0.0, 10.0),
+            0.0,
+        );
     }
 
     #[test]
