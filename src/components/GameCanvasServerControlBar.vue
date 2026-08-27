@@ -135,7 +135,8 @@ function cpuTitle(rateHz: number): string {
             :key="q.playerId"
             class="path-queue"
             :title="`P${q.playerId}: route ${q.route}, refine ${q.refine}, refresh ${q.refresh}`"
-            >P{{ q.playerId }} {{ q.route }}/{{ q.refine }}/{{ q.refresh }}</span
+            ><span class="path-queue-player">P{{ q.playerId }}</span
+            >{{ q.route }}/{{ q.refine }}/{{ q.refresh }}</span
           >
           <span v-if="model.displayPathQueues.length === 0" class="path-queue path-queue-idle">idle</span>
         </div>
@@ -207,16 +208,30 @@ function cpuTitle(rateHz: number): string {
   align-items: center;
   flex-wrap: nowrap;
 }
+/* Same palette as .fps-value / .fps-label in barControls.css: light
+   monospace digits on the bar's dark ground, dim uppercase tag. */
 .path-queue {
-  font-size: 10px;
+  color: #b0b0b0;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: bold;
+  font-size: 11px;
   line-height: 1;
-  padding: 2px 4px;
+  padding: 3px 5px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(176, 176, 176, 0.25);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.path-queue-player {
+  color: #8a8a8a;
+  font-size: 9px;
+  font-weight: normal;
+  text-transform: uppercase;
+  margin-right: 3px;
+}
 .path-queue-idle {
-  opacity: 0.55;
+  color: #777;
+  border-color: transparent;
 }
 </style>
