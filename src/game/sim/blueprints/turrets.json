@@ -3271,9 +3271,9 @@
         "rangeVolume": "turret-range-sphere",
         "sensors": {
           "visionRadius": 600,
-          "radarRadius": 0,
+          "radarRadius": 800,
           "detectorRadius": 600,
-          "jammingRadius": 600
+          "jammingRadius": 0
         }
       },
       "effect": {

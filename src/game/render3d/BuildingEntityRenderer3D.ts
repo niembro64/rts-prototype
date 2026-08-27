@@ -94,6 +94,11 @@ import {
   type EntityLodVisualState3D,
 } from './EntityLodVisualState3D';
 import { createBeamEmitterMeshMaterial } from './BeamWaveVisual3D';
+import {
+  buildSensorSignatureRig3D,
+  syncSensorSignatureRig3D,
+} from './SensorSignatureRig3D';
+import { WATER_LEVEL } from '../sim/Terrain';
 
 const BUILDING_HEIGHT = 120;
 
@@ -347,6 +352,29 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     buildingOperationalMotionTime,
   );
 
+  const sensorRadiiHostRadius = Math.min(localWidth, localDepth) * 0.5;
+  const buildingBaseZ = entity.transform.z - (entity.building?.depth ?? 0) * 0.5;
+  const localWaterlineY = WATER_LEVEL - buildingBaseZ;
+  const sensorSignatureRig = buildSensorSignatureRig3D(entity, {
+    hostRadius: sensorRadiiHostRadius,
+    mountY: entity.transform.z < WATER_LEVEL
+      ? Math.min(shape.height * 0.42, localWaterlineY - Math.max(4, sensorRadiiHostRadius * 0.08))
+      : shape.height * 0.88,
+    includeHardware: !(
+      entity.buildingBlueprintId === 'buildingRadar' ||
+      entity.buildingBlueprintId === 'buildingSonar' ||
+      entity.buildingBlueprintId === 'buildingRadarJammer' ||
+      entity.buildingBlueprintId === 'buildingSonarJammer'
+    ),
+  });
+  if (sensorSignatureRig !== undefined) {
+    sensorSignatureRig.root.userData.entityId = entity.id;
+    sensorSignatureRig.root.traverse((object) => {
+      object.userData.entityId = entity.id;
+    });
+    group.add(sensorSignatureRig.root);
+  }
+
   const buildingTurretMeshes: TurretMesh[] = [];
   if (buildingTurrets) {
     const baseBuildingGfx = getGraphicsConfig();
@@ -439,6 +467,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     radarRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
       ? shape.radarRig
       : undefined,
+    sensorSignatureRig,
     converterRig: visualFeatureVisibleAtDetail('building', 'typeDetails', detailLevel, 0.38)
       ? shape.converterRig
       : undefined,
@@ -771,6 +800,9 @@ export class BuildingEntityRenderer3D {
       if (mesh !== undefined) {
         this.reactivateBuildingMeshForScope(entity, mesh);
         this.reactivateBuildingMeshForLod(entity, mesh);
+        if (mesh.sensorSignatureRig !== undefined) {
+          syncSensorSignatureRig3D(mesh.sensorSignatureRig, entity);
+        }
         // Below the animation rung the building's animators (wind blades,
         // extractor rotor, radar sweep, solar petals) and gatling spin
         // freeze in place — a live gate, not a rebuild.

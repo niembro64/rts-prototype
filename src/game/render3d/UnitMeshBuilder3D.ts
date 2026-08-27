@@ -32,6 +32,7 @@ import { applyChartToMesh, patchSurfaceChartTree } from './SurfaceChartMaterial3
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 import { buildConstructionHostMarking } from './ConstructionHostMarking3D';
 import { configureGroundSilhouetteCasterTree3D } from './GroundSilhouetteShadow3D';
+import { buildSensorSignatureRig3D } from './SensorSignatureRig3D';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
@@ -297,6 +298,18 @@ export class UnitMeshBuilder3D {
       detailLevel,
     );
 
+    const sensorSignatureRig = buildSensorSignatureRig3D(entity, {
+      hostRadius: radius,
+      mountY: radius * 0.82,
+    });
+    if (sensorSignatureRig !== undefined) {
+      sensorSignatureRig.root.userData.entityId = entity.id;
+      sensorSignatureRig.root.traverse((object) => {
+        object.userData.entityId = entity.id;
+      });
+      liftGroup.add(sensorSignatureRig.root);
+    }
+
     this.world.add(group);
     const mesh: EntityMesh = {
       group,
@@ -318,6 +331,7 @@ export class UnitMeshBuilder3D {
       unitRenderTurretCount: turrets.length,
       smoothChassisSlots,
       polyChassisSlot,
+      sensorSignatureRig,
       chassisLift: liftGroup.position.y,
       uprightPose: blueprint?.unitLocomotion.type === 'bot',
     };

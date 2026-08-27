@@ -92,6 +92,13 @@ export type TurretJammerSource = {
   radius: number;
 };
 
+export type AuthoredEntitySensorRadii = {
+  radar: number;
+  sonar: number;
+  radarJamming: number;
+  sonarJamming: number;
+};
+
 const _sourcePosition: Vec3 = { x: 0, y: 0, z: 0 };
 const _source: TurretSensorSource = {
   mount: null as unknown as Turret,
@@ -106,6 +113,84 @@ const _jammerSource: TurretJammerSource = {
   hostMedium: 'aboveWater',
   radius: 0,
 };
+const _authoredSensorRadii: AuthoredEntitySensorRadii = {
+  radar: 0,
+  sonar: 0,
+  radarJamming: 0,
+  sonarJamming: 0,
+};
+
+/** Visits mounted suites without applying completion, health, or ON/OFF
+ * gates. Gameplay coverage uses the operational walker below; presentation
+ * uses this authored walker so a selected closed radar still shows the range
+ * it will provide when reopened and a nanoframe already materializes the
+ * hardware it is building. */
+function forEachEntityAuthoredTurretSensorSource(
+  entity: Entity,
+  visit: (
+    mount: Turret | SensorMountCapability,
+    turretIndex: number,
+    sensors: SensorCapabilityConfig,
+  ) => void,
+): void {
+  for (let i = 0; i < (entity.combat?.turrets.length ?? 0); i++) {
+    const turret = entity.combat!.turrets[i];
+    const sensors = turret.config.targeting.observation.sensors;
+    if (hasAnySensorRadius(sensors)) visit(turret, i, sensors);
+  }
+  for (const mount of entity.combat?.utilityMounts ?? []) {
+    if (mount.kind !== 'sensor' || !hasAnySensorRadius(mount.sensors)) continue;
+    visit(mount, mount.mountIndex, mount.sensors);
+  }
+}
+
+/** Authored radar/sonar and jammer reach routed by the host-origin medium.
+ * The returned object is reused; callers must consume it synchronously. */
+export function getEntityAuthoredSensorRadii(
+  entity: Entity,
+): AuthoredEntitySensorRadii {
+  _authoredSensorRadii.radar = 0;
+  _authoredSensorRadii.sonar = 0;
+  _authoredSensorRadii.radarJamming = 0;
+  _authoredSensorRadii.sonarJamming = 0;
+  const medium = getEntitySensorMedium(entity);
+  forEachEntityAuthoredTurretSensorSource(entity, (_mount, _index, sensors) => {
+    if (medium === 'aboveWater') {
+      _authoredSensorRadii.radar = Math.max(
+        _authoredSensorRadii.radar,
+        sensors.radarRadius,
+      );
+      _authoredSensorRadii.radarJamming = Math.max(
+        _authoredSensorRadii.radarJamming,
+        sensors.jammingRadius,
+      );
+    } else {
+      _authoredSensorRadii.sonar = Math.max(
+        _authoredSensorRadii.sonar,
+        sensors.radarRadius,
+      );
+      _authoredSensorRadii.sonarJamming = Math.max(
+        _authoredSensorRadii.sonarJamming,
+        sensors.jammingRadius,
+      );
+    }
+  });
+  return _authoredSensorRadii;
+}
+
+/** Mount position for authored range previews. Unlike the operational source
+ * helper this remains available while a building is closed or incomplete. */
+export function getEntityPrimaryAuthoredTurretSensorPosition(
+  entity: Entity,
+  out: Vec3,
+): Vec3 | null {
+  let found: Vec3 | null = null;
+  forEachEntityAuthoredTurretSensorSource(entity, (mount, turretIndex) => {
+    if (found !== null) return;
+    found = resolveTurretSensorPosition(entity, mount, turretIndex, out);
+  });
+  return found;
+}
 
 /** Visits each operational mounted turret that authors at least one sensor
  * radius. The callback must consume the reused source object synchronously. */

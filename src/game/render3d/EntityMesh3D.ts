@@ -19,6 +19,7 @@ import type { SolarRig } from './SolarCollectorMesh3D';
 import type { HostOrnamentProfile } from './TeamOrnament3D';
 import type { EntityDeathBlast3D } from './EntityDeathDisassembly3D';
 import type { BuildingOperationalRig } from './BuildingOperationalRig3D';
+import type { SensorSignatureRig3D } from './SensorSignatureRig3D';
 
 /** One wireframe per debug-volume category the host actually carries.
  *  Keys mirror the unified VOLUMES bar group (`VolumeType`) exactly —
@@ -153,6 +154,8 @@ export type EntityMesh = {
   /** Radar-building ground-plane circle. This previews the visual fog
    *  clearing radius without changing snapshot semantics. */
   radarRing?: GroundRing3D;
+  /** Radar/sonar-jamming reach shown beside contact reach on hover/selection. */
+  jammerRing?: GroundRing3D;
   /** Reclaim-mode ground highlight for reclaimable entities. It is
    *  world-parented like range rings so it follows terrain height. */
   reclaimRing?: GroundRing3D;
@@ -179,6 +182,10 @@ export type EntityMesh = {
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
   radarRig?: RadarRig;
+  /** Common radar/sonar or jammer hardware and pulse language. This is
+   * present on every host that authors either contact or denial coverage,
+   * independent of whether its bespoke silhouette already includes a dish. */
+  sensorSignatureRig?: SensorSignatureRig3D;
   converterRig?: ResourceConverterRig;
   fabricatorConstructionRingRig?: FabricatorConstructionRingRig;
   buildingOperationalRig?: BuildingOperationalRig;

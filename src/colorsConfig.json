@@ -835,6 +835,28 @@
         "startAlpha": 0.75
       }
     },
+    "sensorSignature": {
+      "radarPulse": {
+        "colorHex": "#50ff78",
+        "opacity": 0.68
+      },
+      "sonarPulse": {
+        "colorHex": "#45dfff",
+        "opacity": 0.64
+      },
+      "jammerPulse": {
+        "colorHex": "#ff3b32",
+        "opacity": 0.7
+      },
+      "hardwareDark": {
+        "colorHex": "#20272d"
+      },
+      "hardwareLight": {
+        "colorHex": "#b8c5cd",
+        "metalness": 0.62,
+        "roughness": 0.28
+      }
+    },
     "lineDrag": {
       "ring": {
         "colorHex": "#ffffff",
@@ -893,11 +915,19 @@
         "opacity": 0.65
       },
       "radar": {
-        "colorHex": "#ff0000",
+        "colorHex": "#50ff78",
         "opacity": 0.72
       },
       "sonar": {
         "colorHex": "#4fcfff",
+        "opacity": 0.72
+      },
+      "radarJamming": {
+        "colorHex": "#ff3b32",
+        "opacity": 0.72
+      },
+      "sonarJamming": {
+        "colorHex": "#ff5078",
         "opacity": 0.72
       },
       "waterSight": {

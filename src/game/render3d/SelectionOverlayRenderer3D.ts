@@ -31,9 +31,8 @@ import {
 } from '../sim/supportSurface';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import {
-  getEntityPrimaryTurretSensorSource,
-  getEntityRadarRadius,
-  getEntitySonarRadius,
+  getEntityAuthoredSensorRadii,
+  getEntityPrimaryAuthoredTurretSensorPosition,
 } from '../sim/sensorCoverage';
 import { isReclaimableTarget } from '../sim/reclaim';
 import type { TurretMesh } from './TurretMesh3D';
@@ -138,6 +137,7 @@ type OverlayEntityMesh = Pick<
   | 'radiusRingsVisible'
   | 'buildRing'
   | 'radarRing'
+  | 'jammerRing'
   | 'reclaimRing'
   | 'rangeRingsVisible'
 >;
@@ -162,6 +162,9 @@ const COLOR_ENGAGE_MIN_ACQUIRE = rgbaStyle(SEL.engageMinAcquire);
 const COLOR_ENGAGE_MIN_RELEASE = rgbaStyle(SEL.engageMinRelease);
 const COLOR_BUILD = rgbaStyle(SEL.build);
 const COLOR_RADAR = rgbaStyle(SEL.radar);
+const COLOR_SONAR = rgbaStyle(SEL.sonar);
+const COLOR_RADAR_JAMMING = rgbaStyle(SEL.radarJamming);
+const COLOR_SONAR_JAMMING = rgbaStyle(SEL.sonarJamming);
 const COLOR_RECLAIM = rgbaFrom(COLORS.ui.actionColors.reclaim.colorHex, 0.6);
 
 export class SelectionOverlayRenderer3D {
@@ -366,10 +369,15 @@ export class SelectionOverlayRenderer3D {
       (selected && (this.showAnyRange || this.showTurretLockOnVolumes)) ||
       entity.id === this.hoveredEntityId ||
       (selected && this.selectedCount === 1) ||
-      (selected && Math.max(
-        getEntityRadarRadius(entity),
-        getEntitySonarRadius(entity),
-      ) > 0)
+      (selected && (() => {
+        const sensors = getEntityAuthoredSensorRadii(entity);
+        return Math.max(
+          sensors.radar,
+          sensors.sonar,
+          sensors.radarJamming,
+          sensors.sonarJamming,
+        ) > 0;
+      })())
     );
   }
 
@@ -491,11 +499,12 @@ export class SelectionOverlayRenderer3D {
     const showEngageMinRelease = selected && this.showEngageMinRelease;
     const showBuild = selected && this.showBuild;
     const showTurretLockOnVolumes = selected && this.showTurretLockOnVolumes;
-    const radarRadius = Math.max(
-      getEntityRadarRadius(entity),
-      getEntitySonarRadius(entity),
-    );
+    const sensors = getEntityAuthoredSensorRadii(entity);
+    const radarRadius = Math.max(sensors.radar, sensors.sonar);
+    const jammerRadius = Math.max(sensors.radarJamming, sensors.sonarJamming);
     const showRadar = radarRadius > 0 &&
+      (selected || isHovered);
+    const showJammer = jammerRadius > 0 &&
       (selected || isHovered);
     const showReclaim = this.showReclaimTargets && isReclaimableTarget(entity);
     const showAnyTurretCircle =
@@ -503,7 +512,7 @@ export class SelectionOverlayRenderer3D {
       || showEngageAcquire || showEngageRelease
       || showEngageMinAcquire || showEngageMinRelease;
     const showAnyTurretOverlay = showAnyTurretCircle || showTurretLockOnVolumes;
-    if (!showAnyTurretOverlay && !showBuild && !showRadar && !showReclaim) {
+    if (!showAnyTurretOverlay && !showBuild && !showRadar && !showJammer && !showReclaim) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
       return;
@@ -598,16 +607,36 @@ export class SelectionOverlayRenderer3D {
 
     if (showRadar) {
       if (!m.radarRing) m.radarRing = this.makeWorldRing('radar');
-      const source = getEntityPrimaryTurretSensorSource(entity, _selectedSensorPosition);
+      const source = getEntityPrimaryAuthoredTurretSensorPosition(
+        entity,
+        _selectedSensorPosition,
+      );
       this.setWorldRing(
         m.radarRing,
-        source?.position.x ?? ux,
-        source?.position.y ?? uy,
+        source?.x ?? ux,
+        source?.y ?? uy,
         radarRadius,
-        COLOR_RADAR,
+        sensors.radar > 0 ? COLOR_RADAR : COLOR_SONAR,
       );
     } else if (m.radarRing) {
       m.radarRing.hide();
+    }
+
+    if (showJammer) {
+      if (!m.jammerRing) m.jammerRing = this.makeWorldRing('radar');
+      const source = getEntityPrimaryAuthoredTurretSensorPosition(
+        entity,
+        _selectedSensorPosition,
+      );
+      this.setWorldRing(
+        m.jammerRing,
+        source?.x ?? ux,
+        source?.y ?? uy,
+        jammerRadius,
+        sensors.radarJamming > 0 ? COLOR_RADAR_JAMMING : COLOR_SONAR_JAMMING,
+      );
+    } else if (m.jammerRing) {
+      m.jammerRing.hide();
     }
 
     if (showReclaim) {
@@ -618,7 +647,7 @@ export class SelectionOverlayRenderer3D {
     }
 
     m.rangeRingsVisible = showAnyTurretOverlay ||
-      (showBuild && builder !== undefined) || showRadar || showReclaim;
+      (showBuild && builder !== undefined) || showRadar || showJammer || showReclaim;
   }
 
   private makeWorldRing(kind: OverlayLineKind): GroundRing3D {
@@ -651,6 +680,10 @@ export class SelectionOverlayRenderer3D {
     if (m.radarRing) {
       this.removeRangeCircle(m.radarRing);
       m.radarRing = undefined;
+    }
+    if (m.jammerRing) {
+      this.removeRangeCircle(m.jammerRing);
+      m.jammerRing = undefined;
     }
     if (m.reclaimRing) {
       this.removeRangeCircle(m.reclaimRing);
@@ -790,6 +823,7 @@ export class SelectionOverlayRenderer3D {
     this.hideTurretRangeRings(m);
     m.buildRing?.hide();
     m.radarRing?.hide();
+    m.jammerRing?.hide();
     m.reclaimRing?.hide();
   }
 

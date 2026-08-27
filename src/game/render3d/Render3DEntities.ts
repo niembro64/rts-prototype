@@ -128,6 +128,11 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import {
+  disposeSensorSignatureRig3DResources,
+  setSensorSignatureTimeMs,
+  syncSensorSignatureRig3D,
+} from './SensorSignatureRig3D';
 import { unitTurretsAllowVisualBank3D } from './turretRenderHelpers3D';
 import { BeamPilotLightState3D } from './BeamPilotLightState3D';
 
@@ -565,6 +570,7 @@ export class Render3DEntities {
     this._currentTimeMs = frameSpin.timeMs;
     this._spinDt = frameSpin.spinDtSec;
     setDroneFanAnimationTime(frameSpin.timeMs / 1000);
+    setSensorSignatureTimeMs(frameSpin.timeMs);
     // Shared clock for the nanoframe pulse/scan-line animation (one
     // uniform object across every patched build material).
     setEntityBuildTimeMs(frameSpin.timeMs);
@@ -969,6 +975,9 @@ export class Render3DEntities {
       }
       this.reactivateUnitMeshForScope(entityId, m);
       this.reactivateUnitMeshForLod(entityId, m);
+      if (m.sensorSignatureRig !== undefined) {
+        syncSensorSignatureRig3D(m.sensorSignatureRig, e);
+      }
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
       // Preserve the last velocity while this row is visible. If vision drops
@@ -1705,6 +1714,7 @@ export class Render3DEntities {
     this.legRenderer.destroy();
     disposeBodyGeoms();
     disposeBuildingGeoms();
+    disposeSensorSignatureRig3DResources();
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
     this.rexVisualKit.dispose();
