@@ -647,7 +647,12 @@ function runBodyContracts(material: THREE.Material): Map<UnitBlueprintId, TierCo
 }
 
 function runBotBodySeamContracts(): void {
-  for (const unitId of ['unitHuman', 'unitCommander'] as const) {
+  for (const unitId of [
+    'unitHuman',
+    'unitCommander',
+    'unitConstructionBot',
+    'unitAdvancedConstructionBot',
+  ] as const) {
     const blueprint = getUnitBlueprint(unitId);
     const locomotion = blueprint.unitLocomotion;
     const body = blueprint.bodyShape;

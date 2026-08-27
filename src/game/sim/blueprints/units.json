@@ -6085,44 +6085,79 @@
       "parts": [
         {
           "kind": "box",
-          "offsetForward": -0.05,
-          "lengthFrac": 0.62,
-          "widthFrac": 0.76,
-          "heightFrac": 0.52,
-          "centerYFrac": 0.54
+          "offsetForward": -0.04,
+          "lengthFrac": 0.82,
+          "widthFrac": 1.02,
+          "heightFrac": 0.68,
+          "centerYFrac": 1.267142
         },
         {
           "kind": "box",
-          "offsetForward": 0.08,
-          "lengthFrac": 0.3,
-          "widthFrac": 1.02,
-          "heightFrac": 0.18,
-          "centerYFrac": 0.72
+          "offsetForward": 0.4,
+          "lengthFrac": 0.14,
+          "widthFrac": 0.72,
+          "heightFrac": 0.4,
+          "centerYFrac": 1.267142,
+          "pitchRad": -0.12
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.02,
+          "lengthFrac": 0.46,
+          "widthFrac": 1.4,
+          "heightFrac": 0.26,
+          "centerYFrac": 1.737142
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.0,
+          "offsetLateral": -0.66,
+          "lengthFrac": 0.4,
+          "widthFrac": 0.24,
+          "heightFrac": 0.4,
+          "centerYFrac": 1.737142
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.0,
+          "offsetLateral": 0.66,
+          "lengthFrac": 0.4,
+          "widthFrac": 0.24,
+          "heightFrac": 0.4,
+          "centerYFrac": 1.737142
         },
         {
           "kind": "circle",
-          "offsetForward": 0.25,
-          "radiusFrac": 0.18,
-          "yFrac": 0.14,
-          "centerYFrac": 0.92
+          "offsetForward": 0.22,
+          "radiusFrac": 0.24,
+          "yFrac": 0.18,
+          "centerYFrac": 2.047142
         },
         {
           "kind": "cylinder",
-          "offsetForward": 0.36,
-          "offsetLateral": -0.42,
-          "lengthFrac": 0.42,
-          "radiusFrac": 0.075,
-          "centerYFrac": 0.68,
+          "offsetForward": 0.3,
+          "offsetLateral": -0.46,
+          "lengthFrac": 0.5,
+          "radiusFrac": 0.11,
+          "centerYFrac": 1.327142,
           "pitchRad": 0.34
         },
         {
           "kind": "cylinder",
-          "offsetForward": 0.36,
-          "offsetLateral": 0.42,
-          "lengthFrac": 0.42,
-          "radiusFrac": 0.075,
-          "centerYFrac": 0.68,
+          "offsetForward": 0.3,
+          "offsetLateral": 0.46,
+          "lengthFrac": 0.5,
+          "radiusFrac": 0.11,
+          "centerYFrac": 1.327142,
           "pitchRad": 0.34
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.44,
+          "lengthFrac": 0.24,
+          "widthFrac": 0.78,
+          "heightFrac": 0.5,
+          "centerYFrac": 1.287142
         }
       ]
     },
@@ -6174,10 +6209,10 @@
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.05,
-            "yUnitRadiusRatio": 0.3,
+            "yUnitRadiusRatio": 0.36,
             "zUnitRadiusRatio": 1.86048
           },
-          "radius": 3.8,
+          "radius": 5.2,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.96
@@ -6197,10 +6232,10 @@
         "arms": {
           "shoulder": {
             "xUnitRadiusRatio": 0,
-            "yUnitRadiusRatio": 0.55,
-            "zUnitRadiusRatio": 2.82
+            "yUnitRadiusRatio": 0.7,
+            "zUnitRadiusRatio": 2.987207
           },
-          "radius": 3.8,
+          "radius": 5.6,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.62
@@ -8179,52 +8214,87 @@
       "parts": [
         {
           "kind": "box",
-          "offsetForward": -0.08,
-          "lengthFrac": 0.72,
-          "widthFrac": 0.88,
-          "heightFrac": 0.58,
-          "centerYFrac": 0.6
+          "offsetForward": -0.04,
+          "lengthFrac": 0.88,
+          "widthFrac": 1.1,
+          "heightFrac": 0.72,
+          "centerYFrac": 1.83396
         },
         {
           "kind": "box",
-          "offsetForward": 0.12,
-          "lengthFrac": 0.4,
-          "widthFrac": 1.12,
-          "heightFrac": 0.2,
-          "centerYFrac": 0.82
+          "offsetForward": 0.44,
+          "lengthFrac": 0.16,
+          "widthFrac": 0.78,
+          "heightFrac": 0.44,
+          "centerYFrac": 1.83396,
+          "pitchRad": -0.12
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.02,
+          "lengthFrac": 0.52,
+          "widthFrac": 1.48,
+          "heightFrac": 0.28,
+          "centerYFrac": 2.33396
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.0,
+          "offsetLateral": -0.7,
+          "lengthFrac": 0.44,
+          "widthFrac": 0.26,
+          "heightFrac": 0.44,
+          "centerYFrac": 2.33396
+        },
+        {
+          "kind": "box",
+          "offsetForward": 0.0,
+          "offsetLateral": 0.7,
+          "lengthFrac": 0.44,
+          "widthFrac": 0.26,
+          "heightFrac": 0.44,
+          "centerYFrac": 2.33396
         },
         {
           "kind": "circle",
-          "offsetForward": 0.32,
-          "radiusFrac": 0.2,
-          "yFrac": 0.16,
-          "centerYFrac": 1.04
+          "offsetForward": 0.24,
+          "radiusFrac": 0.26,
+          "yFrac": 0.2,
+          "centerYFrac": 2.67396
         },
         {
           "kind": "cylinder",
-          "offsetForward": 0.4,
-          "offsetLateral": -0.46,
-          "lengthFrac": 0.52,
-          "radiusFrac": 0.085,
-          "centerYFrac": 0.75,
-          "pitchRad": 0.42
+          "offsetForward": 0.3,
+          "offsetLateral": -0.5,
+          "lengthFrac": 0.56,
+          "radiusFrac": 0.12,
+          "centerYFrac": 1.87396,
+          "pitchRad": 0.34
         },
         {
           "kind": "cylinder",
-          "offsetForward": 0.4,
-          "offsetLateral": 0.46,
-          "lengthFrac": 0.52,
-          "radiusFrac": 0.085,
-          "centerYFrac": 0.75,
-          "pitchRad": 0.42
+          "offsetForward": 0.3,
+          "offsetLateral": 0.5,
+          "lengthFrac": 0.56,
+          "radiusFrac": 0.12,
+          "centerYFrac": 1.87396,
+          "pitchRad": 0.34
         },
         {
           "kind": "box",
-          "offsetForward": -0.38,
-          "lengthFrac": 0.22,
-          "widthFrac": 1.04,
-          "heightFrac": 0.12,
-          "centerYFrac": 0.36
+          "offsetForward": -0.46,
+          "lengthFrac": 0.28,
+          "widthFrac": 0.84,
+          "heightFrac": 0.56,
+          "centerYFrac": 1.83396
+        },
+        {
+          "kind": "box",
+          "offsetForward": -0.4,
+          "lengthFrac": 0.24,
+          "widthFrac": 1.06,
+          "heightFrac": 0.14,
+          "centerYFrac": 1.54396
         }
       ]
     },
@@ -8276,10 +8346,10 @@
         "legs": {
           "hip": {
             "xUnitRadiusRatio": 0.05,
-            "yUnitRadiusRatio": 0.3,
+            "yUnitRadiusRatio": 0.36,
             "zUnitRadiusRatio": 1.86048
           },
-          "radius": 3.8,
+          "radius": 7.2,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.96
@@ -8299,10 +8369,10 @@
         "arms": {
           "shoulder": {
             "xUnitRadiusRatio": 0,
-            "yUnitRadiusRatio": 0.55,
-            "zUnitRadiusRatio": 2.82
+            "yUnitRadiusRatio": 0.72,
+            "zUnitRadiusRatio": 3.02198
           },
-          "radius": 3.8,
+          "radius": 7.6,
           "segments": {
             "upper": {
               "lengthUnitRadiusRatio": 0.62

@@ -401,9 +401,7 @@ function buildConstructionHostMarkingProfiles(): Readonly<
   // host. Its arrays have already been assigned to every specialist factory;
   // keep the exported registry an exact capability-derived host map.
   delete profiles.directionalFabricator;
-  inherit('unitConstructionBot', 'unitCommander');
   inherit('unitConstructionRover', 'unitConstructionDrone');
-  inherit('unitAdvancedConstructionBot', 'unitConstructionBot');
   inherit('unitAdvancedConstructionRover', 'unitConstructionRover');
   inherit('unitAdvancedConstructionDrone', 'unitConstructionDrone');
   inherit('unitAdvancedConstructionSubmarine', 'unitConstructionSubmarine');

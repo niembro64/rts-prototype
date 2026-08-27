@@ -69,7 +69,7 @@ const botAccentGlowMaterial = new THREE.MeshBasicMaterial({
   color: COLORS.units.unitCommander.lens.colorHex,
 });
 
-type BotVariant = 'commander' | 'human' | 'titan' | 'generic';
+type BotVariant = 'commander' | 'constructor' | 'human' | 'titan' | 'generic';
 type BotArmRole = 'weapon' | 'construction' | 'free';
 export type BotArmHostAttachment = Extract<
   UnitTurretHostAttachment,
@@ -439,6 +439,12 @@ function makeFoot(
 
 function botVariant(unitBlueprintId: string | undefined): BotVariant {
   if (unitBlueprintId === 'unitCommander') return 'commander';
+  if (
+    unitBlueprintId === 'unitConstructionBot' ||
+    unitBlueprintId === 'unitAdvancedConstructionBot'
+  ) {
+    return 'constructor';
+  }
   if (unitBlueprintId === 'unitHuman') return 'human';
   if (unitBlueprintId === 'unitRex') return 'titan';
   return 'generic';
@@ -447,8 +453,11 @@ function botVariant(unitBlueprintId: string | undefined): BotVariant {
 function armRole(variant: BotVariant, side: number): BotArmRole {
   // The Human carries its weapon on the right. The Commander deliberately
   // separates equipment: construction on the right, beam weapon on the left.
-  // A titan carries a gun in each hand, so neither arm is ever free.
+  // A construction bot is a builder first: the same tool arm on the right,
+  // and an unarmed free hand on the left. A titan carries a gun in each
+  // hand, so neither arm is ever free.
   if (variant === 'commander') return side < 0 ? 'construction' : 'weapon';
+  if (variant === 'constructor') return side < 0 ? 'construction' : 'free';
   if (variant === 'titan') return 'weapon';
   if (side < 0) return 'weapon';
   return 'free';
@@ -461,11 +470,12 @@ function botArmId(side: number, upper: boolean): BotArmId {
   return side < 0 ? 'rightArm' : 'leftArm';
 }
 
-function addCommanderConstructionTool(
+function addConstructionToolArm(
   attachment: THREE.Group,
   unitRadius: number,
   ownerId: PlayerId | undefined,
   geometryTier: PrimitiveGeometryTier,
+  unitBlueprintId: string,
 ): void {
   const housing = makeBlock(
     attachment,
@@ -489,7 +499,7 @@ function addCommanderConstructionTool(
   toolHead.position.y = unitRadius * 0.10;
   toolHead.userData.botConstructionTool = true;
 
-  for (const profile of getConstructionHostMarkingProfiles('unitCommander')) {
+  for (const profile of getConstructionHostMarkingProfiles(unitBlueprintId)) {
     if (profile.attach !== 'constructionArm') continue;
     attachment.add(buildConstructionHostMarking(profile, unitRadius, geometryTier));
   }
@@ -900,11 +910,12 @@ export function buildBotRig(
       group.add(attachment);
       const role = pair.upper ? 'weapon' : armRole(variant, side);
       if (role === 'construction') {
-        addCommanderConstructionTool(
+        addConstructionToolArm(
           attachment,
           unitRadius,
           ownerId,
           geometryTier,
+          unitBlueprintId ?? 'unitCommander',
         );
       }
       const wrist = makeBlock(

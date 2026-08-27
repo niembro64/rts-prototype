@@ -93,6 +93,110 @@
         "stripeCount": 16
       }
     ],
+    "unitConstructionBot": [
+      {
+        "kind": "sleeve",
+        "attach": "constructionArm",
+        "center": {
+          "forward": 0,
+          "up": -0.17,
+          "lateral": 0
+        },
+        "axis": "up",
+        "radius": 0.18,
+        "length": 0.42,
+        "stripeCount": 10
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0.48,
+          "up": 1.2671,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "width": 0.44,
+        "height": 0.26,
+        "stripeCount": 8,
+        "mirrored": false
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": 0,
+          "up": 1.7371,
+          "lateral": 0.8
+        },
+        "axis": "lateral",
+        "radius": 0.16,
+        "length": 0.2,
+        "stripeCount": 8
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": 0,
+          "up": 1.7371,
+          "lateral": -0.8
+        },
+        "axis": "lateral",
+        "radius": 0.16,
+        "length": 0.2,
+        "stripeCount": 8
+      }
+    ],
+    "unitAdvancedConstructionBot": [
+      {
+        "kind": "sleeve",
+        "attach": "constructionArm",
+        "center": {
+          "forward": 0,
+          "up": -0.17,
+          "lateral": 0
+        },
+        "axis": "up",
+        "radius": 0.18,
+        "length": 0.42,
+        "stripeCount": 10
+      },
+      {
+        "kind": "panel",
+        "center": {
+          "forward": 0.53,
+          "up": 1.834,
+          "lateral": 0
+        },
+        "axis": "forward",
+        "width": 0.44,
+        "height": 0.26,
+        "stripeCount": 8,
+        "mirrored": false
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": 0,
+          "up": 2.334,
+          "lateral": 0.85
+        },
+        "axis": "lateral",
+        "radius": 0.17,
+        "length": 0.22,
+        "stripeCount": 8
+      },
+      {
+        "kind": "sleeve",
+        "center": {
+          "forward": 0,
+          "up": 2.334,
+          "lateral": -0.85
+        },
+        "axis": "lateral",
+        "radius": 0.17,
+        "length": 0.22,
+        "stripeCount": 8
+      }
+    ],
     "unitConstructionDrone": [
       {
         "kind": "sleeve",
