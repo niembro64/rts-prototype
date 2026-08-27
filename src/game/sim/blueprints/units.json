@@ -118,7 +118,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 55
+        "waterDamagePerSecond": 55,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -264,7 +265,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 85
+        "waterDamagePerSecond": 85,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -461,7 +463,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 240
+        "waterDamagePerSecond": 240,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -607,7 +610,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 260
+        "waterDamagePerSecond": 260,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -754,7 +758,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 200
+        "waterDamagePerSecond": 200,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -915,7 +920,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 49.125
+        "waterDamagePerSecond": 49.125,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -1195,7 +1201,8 @@
         }
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 170,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -1688,7 +1695,7 @@
     },
     "unitLocomotion": {
       "type": "bot",
-      "physicsPresetId": "bot",
+      "physicsPresetId": "amphibious-bot",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 260
@@ -1780,7 +1787,8 @@
         }
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -1917,7 +1925,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 750
+        "waterDamagePerSecond": 750,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -2110,7 +2119,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 2400
+        "waterDamagePerSecond": 2400,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -2423,7 +2433,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 2100
+        "waterDamagePerSecond": 2100,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -2572,7 +2583,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -2776,7 +2788,8 @@
         "cycleDistanceFrac": 1.4
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -2982,7 +2995,8 @@
         "cycleDistanceFrac": 1.9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 725
       }
     },
     "base": {
@@ -3153,7 +3167,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 105
+        "waterDamagePerSecond": 105,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -3309,7 +3324,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 210
+        "waterDamagePerSecond": 210,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -3445,7 +3461,8 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 60
+        "waterDamagePerSecond": 60,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -3612,7 +3629,8 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 230
+        "waterDamagePerSecond": 230,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -3807,7 +3825,8 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 130
+        "waterDamagePerSecond": 130,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -3966,7 +3985,8 @@
         "jetLength": 0.6
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 180
+        "waterDamagePerSecond": 180,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -4152,7 +4172,8 @@
         "jetLength": 0.3
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -4343,7 +4364,8 @@
         "jetLength": 0.2
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 3800
+        "waterDamagePerSecond": 3800,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -4599,7 +4621,8 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 4500
+        "waterDamagePerSecond": 4500,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -4859,7 +4882,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 4700
+        "waterDamagePerSecond": 4700,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -5015,7 +5039,8 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 280
+        "waterDamagePerSecond": 280,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -5345,7 +5370,7 @@
     },
     "unitLocomotion": {
       "type": "bot",
-      "physicsPresetId": "bot",
+      "physicsPresetId": "amphibious-bot",
       "physics": {
         "ground": {
           "maxPropulsiveForce": 11.8
@@ -5416,7 +5441,8 @@
         }
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -5615,7 +5641,8 @@
         "cycleDistanceFrac": 2
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 350
       }
     },
     "base": {
@@ -5763,7 +5790,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 230
+        "waterDamagePerSecond": 230,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -5934,7 +5962,8 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 80
+        "waterDamagePerSecond": 80,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -6251,7 +6280,8 @@
         }
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 120,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -6428,7 +6458,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 130
+        "waterDamagePerSecond": 130,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -6663,7 +6694,8 @@
         "cycleDistanceFrac": 1.4
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 90
       }
     },
     "base": {
@@ -6839,7 +6871,8 @@
         "fanSpinRadPerSec": -10
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 130
+        "waterDamagePerSecond": 130,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -7048,7 +7081,8 @@
         "cycleDistanceFrac": 1.4
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -7242,7 +7276,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 170
+        "waterDamagePerSecond": 170,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -7432,7 +7467,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 410
+        "waterDamagePerSecond": 410,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -7639,7 +7675,8 @@
         ]
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -7845,7 +7882,8 @@
         "cycleDistanceFrac": 1.4
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 450
       }
     },
     "base": {
@@ -8061,7 +8099,8 @@
         "jetLength": 0.3
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -8388,7 +8427,8 @@
         }
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 340,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -8583,7 +8623,8 @@
         "rotationSpeed": 1
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 380
+        "waterDamagePerSecond": 380,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -8846,7 +8887,8 @@
         "fanSpinRadPerSec": -9
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 310
+        "waterDamagePerSecond": 310,
+        "landDamagePerSecond": 0
       }
     },
     "base": {
@@ -9078,7 +9120,8 @@
         "cycleDistanceFrac": 2
       },
       "environmentalHazards": {
-        "waterDamagePerSecond": 0
+        "waterDamagePerSecond": 0,
+        "landDamagePerSecond": 825
       }
     },
     "base": {

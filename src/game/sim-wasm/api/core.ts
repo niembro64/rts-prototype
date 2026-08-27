@@ -585,8 +585,8 @@ export interface SimWasm {
   unitForceRuntimeClear: () => void;
   /** Applies origin-submerged water damage for every live unit body,
    *  including sleeping bodies, and returns the damaged entity-slot count. */
-  unitWaterDamageStepPool: (dtSec: number) => number;
-  unitWaterDamagedEntitySlotsPtr: () => number;
+  unitEnvironmentDamageStepPool: (dtSec: number) => number;
+  unitEnvironmentDamagedEntitySlotsPtr: () => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
    *  unit/projectile sphere tests, building AABB tests, slice filtering,

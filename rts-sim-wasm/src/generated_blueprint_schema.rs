@@ -988,6 +988,7 @@ pub struct UnitUnitLocomotionBlueprintPhysics {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitLocomotionEnvironmentalHazardPolicy {
     pub waterDamagePerSecond: f64,
+    pub landDamagePerSecond: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
