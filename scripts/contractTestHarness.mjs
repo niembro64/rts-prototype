@@ -57,10 +57,16 @@ for (const m of initSource.slice(blockStart).matchAll(/const \{ ([^}]+) \} = awa
 }
 
 // Tests that stand up their own authoritative backend, so they cannot share a
-// page with the lobby's background battle.
+// page with the lobby's background battle. The snapshot-visibility contract
+// is here for the same reason from the other side: it compares a JS source
+// walk against the native observation slab, and the background battle's
+// terrain re-install (a demo restart mid-run) can leave the two reading
+// different terrain — a radar contact that clears a ridge on one side hits
+// it on the other. On the exclusive page no battle runs beside it.
 const EXCLUSIVE_SIM_SLOT_TESTS = new Set([
   'runDeterministicLockstepBackendContractTest',
   'runUnitWaterSurfaceDynamicsContractTest',
+  'runSnapshotVisibilityContractTest',
 ]);
 
 const selected = registered.filter(({ fn }) => (only === null ? true : fn.toLowerCase().includes(only.toLowerCase())));

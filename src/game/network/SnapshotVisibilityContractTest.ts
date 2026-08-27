@@ -23,8 +23,7 @@ import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { ResourceMovement } from '../sim/resourceMovement';
-import { WATER_LEVEL, buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
-import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
+import { WATER_LEVEL } from '../sim/Terrain';
 import {
   getEntityFullVisionRadius,
   getEntityRadarRadius,
@@ -37,6 +36,13 @@ import {
   packMinimapEntitiesForWire,
   unpackMinimapEntitiesFromWire,
 } from './snapshotMinimapWirePack';
+
+// This contract compares the JS source walk with the native observation slab,
+// but the boot harness intentionally shares a page (and therefore a native
+// terrain singleton) across contracts. Keep the air-radar routing fixture well
+// above every authored terrain so its result tests the selected sensing medium,
+// not whichever terrain mesh the preceding contract installed.
+const TERRAIN_INDEPENDENT_AIR_Z = 100_000;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -88,29 +94,7 @@ function createOpenedStructure(
   return entity;
 }
 
-/** The contract compares a JS source walk against the native observation
- *  slab, and both must read the SAME terrain. The boot harness runs every
- *  contract in one page beside the live demo battle, whose terrain install
- *  (JS tile map + WASM mesh) can be mid-flight or restored through the
- *  version-equal fast path that skips the WASM upload — so the two sides
- *  drift and a radar contact that clears terrain on one side hits it on the
- *  other. Own the terrain for the test's duration and restore it through a
- *  full re-install afterwards. */
 export function runSnapshotVisibilityContractTest(): void {
-  const previousMap = getAuthoritativeTerrainTileMap();
-  setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
-  try {
-    runSnapshotVisibilityContractTestBody();
-  } finally {
-    // Null first: a same-version restore would swap the JS map without
-    // re-uploading the WASM mesh, leaving exactly the drift this guards.
-    setAuthoritativeTerrainTileMap(null);
-    if (previousMap !== null) setAuthoritativeTerrainTileMap(previousMap);
-    spatialGrid.clear();
-  }
-}
-
-function runSnapshotVisibilityContractTestBody(): void {
   spatialGrid.clear();
   getSimWasm()?.combatTargeting.clear();
 
@@ -122,10 +106,8 @@ function runSnapshotVisibilityContractTestBody(): void {
     assertContract(entity.unit !== null, 'observer must have a unit component');
     entity.transform.z = WATER_LEVEL + 100;
     const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
-    sensors.fullSight.aboveWater.aboveWater = 1200;
-    sensors.fullSight.aboveWater.underwater = 0;
-    sensors.contactSight.aboveWater.aboveWater = 3000;
-    sensors.contactSight.aboveWater.underwater = 0;
+    sensors.visionRadius = 1200;
+    sensors.radarRadius = 3000;
     sensors.detectorRadius = 600;
   });
   const fullSightEnemy = createUnit(world, 700, 512, 2 as PlayerId);
@@ -449,8 +431,8 @@ function runSnapshotVisibilityContractTestBody(): void {
     radarSensor?.kind === 'sensor',
     'radar fixture must hydrate its lightweight sensor mount',
   );
-  radarSensor.sensors.fullSight.aboveWater.aboveWater = 500;
-  radarSensor.sensors.contactSight.aboveWater.aboveWater = 1800;
+  radarSensor.sensors.visionRadius = 500;
+  radarSensor.sensors.radarRadius = 1800;
   const closedFullSightEnemy = createUnit(
     activeStateWorld,
     1250,
@@ -564,8 +546,8 @@ function runSnapshotVisibilityContractTestBody(): void {
   const sonarWaterTarget = createUnit(mediumWorld, 4000, 7000, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL - 100;
   });
-  const sonarAirTarget = createUnit(mediumWorld, 4000, 7000, 2 as PlayerId, (entity) => {
-    entity.transform.z = WATER_LEVEL + 100;
+  const sonarAirTarget = createUnit(mediumWorld, 7200, 7000, 2 as PlayerId, (entity) => {
+    entity.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   });
   const sonarStraddlingBuilding = createOpenedStructure(
     mediumWorld,
@@ -606,28 +588,25 @@ function runSnapshotVisibilityContractTestBody(): void {
     1 as PlayerId,
     'buildingSonar',
   );
-  aboveWaterSonarBuilding.transform.z = WATER_LEVEL + 100;
-  const aboveWaterSonarRejectedTarget = createUnit(
-    mediumWorld,
-    7300,
-    7000,
-    2 as PlayerId,
-    (entity) => {
-      entity.transform.z = WATER_LEVEL;
-    },
-  );
+  aboveWaterSonarBuilding.transform.z = TERRAIN_INDEPENDENT_AIR_Z;
   const legacyMediumVisibility = SnapshotVisibility.forRecipient(mediumWorld, 1 as PlayerId);
   const legacyMediumContacts = sorted(legacyMediumVisibility.getRadarEntityIds());
   assertContract(legacyMediumContacts.includes(radarBuilding.id), 'owned radar building must remain visible');
   assertContract(legacyMediumContacts.includes(sonarBuilding.id), 'owned sonar building must remain visible');
   assertContract(legacyMediumContacts.includes(radarAirTarget.id), 'radar must locate air-medium centers');
-  assertContract(!legacyMediumContacts.includes(radarWaterTarget.id), 'radar must reject water-medium centers');
+  assertContract(
+    legacyMediumContacts.includes(radarWaterTarget.id),
+    'a radar building with a submerged origin must contribute water-radar',
+  );
   assertContract(
     legacyMediumContacts.includes(radarStraddlingBuilding.id),
     'radar must reveal the above-water fraction of a waterline building',
   );
   assertContract(legacyMediumContacts.includes(sonarWaterTarget.id), 'sonar must locate water-medium centers');
-  assertContract(!legacyMediumContacts.includes(sonarAirTarget.id), 'sonar must reject air-medium centers');
+  assertContract(
+    legacyMediumContacts.includes(sonarAirTarget.id),
+    'a sonar building with an above-water origin must contribute air-radar',
+  );
   assertContract(
     legacyMediumContacts.includes(sonarStraddlingBuilding.id),
     'sonar must reveal the underwater fraction of a waterline building',
@@ -635,10 +614,6 @@ function runSnapshotVisibilityContractTestBody(): void {
   assertContract(
     !legacyMediumContacts.includes(underwaterRadarRejectedTarget.id),
     'an underwater radar source must not activate its above-water source row',
-  );
-  assertContract(
-    !legacyMediumContacts.includes(aboveWaterSonarRejectedTarget.id),
-    'an above-water sonar source must not activate its underwater source row',
   );
   assertContract(
     !legacyMediumContacts.includes(radarOutsideCenterTarget.id),
@@ -696,19 +671,11 @@ function runSnapshotVisibilityContractTestBody(): void {
     5000,
     1 as PlayerId,
     (entity) => {
-      // Keep the mounted sensor origin below the surface.
+      // The host origin selects the water fields.
       entity.transform.z = WATER_LEVEL - 100;
-      // Author the underwater source row HERE rather than leaning on the
-      // roster's default. Dry units do not carry one — a tank cannot see
-      // from a medium it cannot enter. This test is about the matrix's
-      // source-row semantics, so it supplies its own sensor rather than
-      // depending on what some blueprint happens to be tuned to. Full sight
-      // crosses the waterline (sensorWaterlineSightContractTest), so the row
-      // authors the same radius for both target media.
       const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
-      sensors.fullSight.underwater.underwater = 1200;
-      sensors.fullSight.underwater.aboveWater = 1200;
-      sensors.contactSight.underwater.underwater = 1200;
+      sensors.visionRadius = 1200;
+      sensors.radarRadius = 1200;
     },
   );
   const underwaterSameMediumTarget = createUnit(
@@ -737,7 +704,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     (entity) => {
       assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
       entity.transform.z = WATER_LEVEL + 100;
-      entity.combat!.turrets[0].config.targeting.observation.sensors.fullSight.aboveWater.underwater = 900;
+      entity.combat!.turrets[0].config.targeting.observation.sensors.visionRadius = 900;
     },
   );
   const aboveCrossMediumWaterTarget = createUnit(
@@ -757,7 +724,7 @@ function runSnapshotVisibilityContractTestBody(): void {
     (entity) => {
       assertContract(entity.unit !== null, 'cross-medium observer must be a unit');
       entity.transform.z = WATER_LEVEL - 100;
-      entity.combat!.turrets[0].config.targeting.observation.sensors.fullSight.underwater.aboveWater = 900;
+      entity.combat!.turrets[0].config.targeting.observation.sensors.visionRadius = 900;
     },
   );
   const underwaterCrossMediumAboveTarget = createUnit(
@@ -776,36 +743,32 @@ function runSnapshotVisibilityContractTestBody(): void {
       legacyMatrixVisible.includes(underwaterSameMediumObserver.id) &&
       legacyMatrixVisible.includes(aboveCrossMediumObserver.id) &&
       legacyMatrixVisible.includes(underwaterCrossMediumObserver.id),
-    'every owned matrix observer must remain visible',
+    'every owned sensor observer must remain visible',
   );
-  // Full sight crosses the waterline: a source row reaches both target media
-  // to the same radius, so the same-medium and cross-medium neighbours of a
-  // default (blueprint) above-water observer are both seen, and likewise
-  // for an authored underwater row.
   assertContract(
     legacyMatrixVisible.includes(aboveSameMediumTarget.id) &&
-      legacyMatrixVisible.includes(aboveObserverUnderwaterTarget.id),
-    'above-water source row must allow both A→A and A→W by default (full sight crosses the waterline)',
+      !legacyMatrixVisible.includes(aboveObserverUnderwaterTarget.id),
+    'an air-vision source must reveal air targets and not water targets',
   );
   assertContract(
     legacyMatrixVisible.includes(underwaterSameMediumTarget.id) &&
-      legacyMatrixVisible.includes(underwaterObserverAboveTarget.id),
-    'underwater source row must allow both W→W and W→A (full sight crosses the waterline)',
+      !legacyMatrixVisible.includes(underwaterObserverAboveTarget.id),
+    'a water-vision source must reveal water targets and not air targets',
   );
   assertContract(
-    legacyMatrixVisible.includes(aboveCrossMediumWaterTarget.id),
-    'an authored A→W lane must reveal an underwater center',
+    !legacyMatrixVisible.includes(aboveCrossMediumWaterTarget.id),
+    'a scalar air-host sensor cannot author an air-to-water exception',
   );
   assertContract(
-    legacyMatrixVisible.includes(underwaterCrossMediumAboveTarget.id),
-    'an authored W→A lane must reveal an above-water center',
+    !legacyMatrixVisible.includes(underwaterCrossMediumAboveTarget.id),
+    'a scalar water-host sensor cannot author a water-to-air exception',
   );
   stampCombatTargetingPool(matrixWorld);
   const nativeMatrixVisibility = SnapshotVisibility.forRecipient(matrixWorld, 1 as PlayerId);
   assertSameIds(
     nativeMatrixVisibility.getVisibleEntityIds(),
     legacyMatrixVisible,
-    'native four-way full-sight matrix must match the legacy source walk',
+    'native host-origin vision fields must match the JS source walk',
   );
   spatialGrid.clear();
   getSimWasm()?.combatTargeting.clear();
@@ -859,8 +822,8 @@ function runSnapshotVisibilityContractTestBody(): void {
     const sensors = entity.combat!.turrets[0].config.targeting.observation.sensors;
     // Radar reaching far, sight reaching barely — so "seen" and "contacted"
     // are separable at different ranges.
-    sensors.fullSight.aboveWater.aboveWater = 400;
-    sensors.contactSight.aboveWater.aboveWater = 5000;
+    sensors.visionRadius = 400;
+    sensors.radarRadius = 5000;
   });
 
   const plainTarget = createUnit(denialWorld, 3000, 1000, 2 as PlayerId, (entity) => {
@@ -875,7 +838,7 @@ function runSnapshotVisibilityContractTestBody(): void {
   // The jammer protects its OWN side and sits with the unit it is covering.
   createUnit(denialWorld, 4200, 1000, 2 as PlayerId, (entity) => {
     entity.transform.z = WATER_LEVEL + 100;
-    entity.combat!.turrets[0].config.targeting.observation.sensors.radarJamRadius = 800;
+    entity.combat!.turrets[0].config.targeting.observation.sensors.jammingRadius = 800;
   });
 
   const denialVisibility = SnapshotVisibility.forRecipient(denialWorld, 1 as PlayerId);
