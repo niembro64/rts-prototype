@@ -108,16 +108,17 @@ type BuildPreviewTarget = {
   worldY: number;
 };
 
+type BuildQueuePlacement = {
+  gridX: number;
+  gridY: number;
+  rotation?: number;
+};
+
 type BuildShapePlacementPlanner = (
   buildingBlueprintId: BuildingBlueprintId,
   entitySource: ModeClickEntitySource,
   capableBuilders: readonly Entity[],
-) => ReadonlyArray<{ gridX: number; gridY: number }>;
-
-type BuildQueuePlacement = {
-  gridX: number;
-  gridY: number;
-};
+) => ReadonlyArray<BuildQueuePlacement>;
 
 type SelectedBuildRoster = {
   activeBuilder: Entity;
@@ -248,6 +249,7 @@ export class Input3DModeClickController {
   }
 
   handleBuildModeChange(buildingBlueprintId: BuildingBlueprintId | null): void {
+    this.buildPlacement.setActiveBuildingBlueprintId(buildingBlueprintId);
     this.buildPlacement.reset();
     this.lastBuildPreviewTarget = null;
     if (buildingBlueprintId === null) {
@@ -284,6 +286,7 @@ export class Input3DModeClickController {
     if (!this.active) return false;
     e.preventDefault();
     if (e.button === 0) {
+      if (this.tryCommitBuildAround(e)) return true;
       if (this.beginAreaDrag(e)) return true;
       this.handleLeftClick(e);
     } else if (e.button === 2) {
@@ -362,14 +365,60 @@ export class Input3DModeClickController {
   private beginAreaDrag(e: MouseEvent): boolean {
     const kind = this.activeAreaDragKind();
     if (kind === null) return false;
+    const modifiers = effectiveQueueModifierEvent(e);
     // BAR only enters multi-placement drag grammar while Shift is held.
     // Without Shift, the ordinary build click places exactly one structure
-    // even if the pointer happens to move before release.
+    // even if the pointer happens to move before release. Shift+Ctrl without
+    // a structure under the anchor is also a queued SINGLE placement; Ctrl is
+    // reserved for build-around (or Alt+Ctrl's hollow box).
     if (
       kind === 'buildLine' &&
-      !effectiveQueueModifierEvent(e).shiftKey
+      (!modifiers.shiftKey ||
+        ((modifiers.ctrlKey || modifiers.metaKey) && !modifiers.altKey))
     ) return false;
     return this.beginAreaDragWithKind(e, kind, 0);
+  }
+
+  /** BAR gui_pregame_build.lua AROUND mode: Shift+Ctrl on a structure
+   *  immediately queues a fitted, inward-facing perimeter. It is resolved
+   *  before ordinary drag grammar because Alt+Ctrl still means AROUND when
+   *  the anchor is a valid structure, and means hollow-box on open ground. */
+  private tryCommitBuildAround(e: MouseEvent): boolean {
+    const buildingBlueprintId = this.config.mode.buildingBlueprintId;
+    if (buildingBlueprintId === null || buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) {
+      return false;
+    }
+    const modifiers = effectiveQueueModifierEvent(e);
+    if (!modifiers.shiftKey || (!modifiers.ctrlKey && !modifiers.metaKey)) return false;
+    const targetId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    if (targetId === null) return false;
+    const target = this.config.getEntitySource().getEntity(targetId);
+    if (target === undefined || target.building === null || target.buildingBlueprintId === null) {
+      return false;
+    }
+
+    const queueMode = queueModeFromEvent(e, this.config.getQueueInsertIndex());
+    this.commitBuildShapePlacements(
+      {
+        kind: 'buildLine',
+        button: 0,
+        start: { x: target.transform.x, y: target.transform.y, z: target.transform.z },
+        current: { x: target.transform.x, y: target.transform.y, z: target.transform.z },
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        queue: queueMode.queue,
+        queueFront: queueMode.queueFront,
+        queueInsertIndex: queueMode.queueInsertIndex,
+        anchorEntityId: target.id,
+      },
+      buildingBlueprintId,
+      (blueprintId, entitySource) => this.buildPlacement.planBuildAroundPlacements(
+        blueprintId,
+        target,
+        entitySource,
+      ),
+    );
+    return true;
   }
 
   private beginRightButtonAreaDrag(e: MouseEvent): boolean {
@@ -1005,7 +1054,7 @@ export class Input3DModeClickController {
         buildingBlueprintId,
         gridX: placement.gridX,
         gridY: placement.gridY,
-        rotation: this.buildPlacement.facingInfo.rotation,
+        rotation: placement.rotation ?? this.buildPlacement.facingInfo.rotation,
         queue: i === 0 ? drag.queue : true,
         queueFront: i === 0 ? drag.queueFront : false,
         queueInsertIndex: i === 0 ? drag.queueInsertIndex : undefined,

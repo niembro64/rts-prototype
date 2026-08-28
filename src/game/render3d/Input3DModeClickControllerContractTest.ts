@@ -13,6 +13,7 @@ import { clearQueueModifierState } from '../input/queueModifiers';
 import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DModeClickController } from './Input3DModeClickController';
 import { FLAT_GROUND_BUILD_SQUARE_FLAGS } from '../sim/terrain/terrainBuildability';
+import { getBuildingConfig } from '../sim/buildConfigs';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -87,6 +88,30 @@ function makeUnit(id: number, playerId: number): Entity {
         },
       ],
     } as unknown as Entity['combat'],
+  };
+}
+
+function makeBuilding(
+  id: number,
+  x: number,
+  y: number,
+  buildingBlueprintId: BuildingBlueprintId,
+): Entity {
+  const config = getBuildingConfig(buildingBlueprintId);
+  return {
+    ...createEmptyEntityComponentSlots(),
+    id,
+    type: 'building',
+    transform: createTransform(x, y, 0, 0),
+    ownership: { playerId: 1 },
+    buildingBlueprintId,
+    building: {
+      width: config.gridWidth * BUILD_GRID_CELL_SIZE,
+      height: config.gridHeight * BUILD_GRID_CELL_SIZE,
+      depth: config.gridDepth * BUILD_GRID_CELL_SIZE,
+      hp: config.hp,
+      maxHp: config.hp,
+    } as Entity['building'],
   };
 }
 
@@ -447,8 +472,8 @@ export function runInput3DModeClickControllerContractTest(): void {
   );
 
   const placementState = new Input3DBuildPlacementState();
-  const buildMapWidth = 512;
-  const buildMapHeight = 512;
+  const buildMapWidth = 1024;
+  const buildMapHeight = 1024;
   const buildCellsX = Math.ceil(buildMapWidth / BUILD_GRID_CELL_SIZE);
   const buildCellsY = Math.ceil(buildMapHeight / BUILD_GRID_CELL_SIZE);
   const flatBuildabilityGrid = {
@@ -493,6 +518,65 @@ export function runInput3DModeClickControllerContractTest(): void {
     reverseBorder.length >= 3 &&
       reverseBorder[0].x > reverseBorder[2].x,
     'reverse hollow build drag must start from the drag-start edge instead of the normalized minimum corner',
+  );
+
+  // BAR remembers spacing per structure rather than carrying one building's
+  // gap into the next choice. Each source spacing step is one build cell on
+  // both sides of the selected building's actual placement footprint.
+  placementState.setActiveBuildingBlueprintId('buildingSolar');
+  placementState.increaseBuildLineSpacing();
+  placementState.increaseBuildLineSpacing();
+  placementState.setActiveBuildingBlueprintId('buildingResourceConverter');
+  assertContract(
+    placementState.spacingInfo.steps === 0,
+    'switching building types must restore that structure type\'s independent BAR build spacing',
+  );
+  placementState.increaseBuildLineSpacing();
+  placementState.setActiveBuildingBlueprintId('buildingSolar');
+  assertContract(
+    placementState.spacingInfo.steps === 2,
+    'returning to a building type must recall its previous match-local spacing',
+  );
+  const spacedSolarLine = placementState.planBuildLinePlacements(
+    'buildingSolar',
+    200,
+    200,
+    700,
+    200,
+    emptyBuildEntitySource,
+  );
+  const solarSpacingCells = getBuildingConfig('buildingSolar').placementFootprint.gridWidth + 4;
+  assertContract(
+    spacedSolarLine.length >= 2 &&
+      Math.abs(
+        spacedSolarLine[1].x - spacedSolarLine[0].x - solarSpacingCells * BUILD_GRID_CELL_SIZE,
+      ) < 1e-6,
+    `two BAR spacing steps must add four build cells to the footprint instead of scaling it by a generic percentage (cells=${solarSpacingCells}; positions=${spacedSolarLine.map((placement) => placement.x).join(',')})`,
+  );
+
+  const aroundTarget = makeBuilding(601, 512, 512, 'buildingSolar');
+  const aroundPlan = placementState.planBuildAroundPlacements(
+    'buildingSolar',
+    aroundTarget,
+    {
+      getBuildings: () => [aroundTarget],
+      getTerrainBuildabilityGrid: () => flatBuildabilityGrid,
+    },
+  );
+  const aroundRotations = new Set(aroundPlan.map((placement) => placement.rotation));
+  assertContract(
+    aroundPlan.length >= 4 && aroundRotations.size === 4,
+    'BAR Shift+Ctrl build-around must create a fitted perimeter with four independently faced sides',
+  );
+  assertContract(
+    aroundPlan.every((placement) => {
+      const rotation = placement.rotation;
+      if (rotation === undefined) return false;
+      const towardTargetX = aroundTarget.transform.x - placement.x;
+      const towardTargetY = aroundTarget.transform.y - placement.y;
+      return Math.cos(rotation) * towardTargetX + Math.sin(rotation) * towardTargetY > 0;
+    }),
+    'every build-around placement must face inward toward the surrounded structure',
   );
 
   const dgunMode = new CommanderModeController();

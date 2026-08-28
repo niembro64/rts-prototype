@@ -10,6 +10,7 @@ import { WorldState } from '../sim/WorldState';
 import {
   buildSensorSignatureRig3D,
   disposeSensorSignatureRig3DResources,
+  resolveUnitSensorSignatureMount3D,
   syncSensorSignatureRig3D,
 } from './SensorSignatureRig3D';
 import type { EntityMesh } from './EntityMesh3D';
@@ -73,9 +74,10 @@ export function runSensorSignatureRig3DContractTest(): void {
   const world = new WorldState(7418, 1024, 1024);
   const commander = world.createUnitFromBlueprint(200, 200, 1, 'unitCommander');
   commander.transform.z = WATER_LEVEL + 100;
+  const commanderRadius = commander.unit!.radius.other;
+  const commanderRadarMount = resolveUnitSensorSignatureMount3D(commander, commanderRadius);
   const radarRig = buildSensorSignatureRig3D(commander, {
-    hostRadius: commander.unit!.radius.other,
-    mountY: 30,
+    hostRadius: commanderRadius,
   });
   assertContract(
     radarRig !== undefined &&
@@ -87,12 +89,23 @@ export function runSensorSignatureRig3DContractTest(): void {
       radarRig.jammerPulses === null,
     'a radar-only mobile host must carry the shared dish and green pulse only',
   );
+  assertContract(
+    radarRig.root.position.equals(new THREE.Vector3(
+      commanderRadarMount.x,
+      commanderRadarMount.y,
+      commanderRadarMount.z,
+    )) &&
+      commanderRadarMount.x < -commanderRadius * 0.5 &&
+      commanderRadarMount.y > commanderRadius * 2.75 &&
+      commanderRadarMount.z === 0,
+    'the Commander radar must sit on the centered upper-rear backpack mount instead of between its legs',
+  );
 
   const duck = world.createUnitFromBlueprint(240, 200, 1, 'unitDuck');
   duck.transform.z = WATER_LEVEL + 20;
   const mixedRig = buildSensorSignatureRig3D(duck, {
     hostRadius: duck.unit!.radius.other,
-    mountY: 20,
+    mount: { x: 0, y: 20, z: 0 },
   });
   assertContract(
     mixedRig !== undefined &&
@@ -112,7 +125,7 @@ export function runSensorSignatureRig3DContractTest(): void {
   );
   const dedicatedRig = buildSensorSignatureRig3D(radarBuilding, {
     hostRadius: 50,
-    mountY: 80,
+    mount: { x: 0, y: 80, z: 0 },
     includeHardware: false,
   });
   assertContract(
@@ -141,7 +154,7 @@ export function runSensorSignatureRig3DContractTest(): void {
   );
   const sonarRig = buildSensorSignatureRig3D(torpedoTower, {
     hostRadius: 40,
-    mountY: 30,
+    mount: { x: 0, y: 30, z: 0 },
   });
   assertContract(
     sonarRig !== undefined &&

@@ -300,7 +300,6 @@ export class UnitMeshBuilder3D {
 
     const sensorSignatureRig = buildSensorSignatureRig3D(entity, {
       hostRadius: radius,
-      mountY: radius * 0.82,
     });
     if (sensorSignatureRig !== undefined) {
       sensorSignatureRig.root.userData.entityId = entity.id;
