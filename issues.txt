@@ -1,9 +1,0 @@
-1) let's make all universal fabricators 2.2x off the ground compared to their tallest unit (as per the unit's top part off of the ground)
-
-2) our "dragonfly" unit take too long to get to its target (for the dropping weapon). Either that or we need to make the dropping weapon have more range. Ideally it just gets there a bit faster - it's interesting to be so different.
-
-3) "tyrannosaurus", "queen tick", and "queen bee" should move much slower especial the larger titan units. 
-
-4) our top bar's "NORTH" arrow should point to north in 3D space, currently it is acting as if it were 2D. Add these three arrows information in the right spots in our design document. Also be sure to add all three arrows in our minimap (2D).
-
-
