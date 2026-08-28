@@ -49,6 +49,10 @@ export function runLobbySettingsContractTest(): void {
     { ...CURRENT_SETTINGS, lobbyName: '' },
     'contract test unnamed lobby',
   );
+  assertCurrentLobbySettings(
+    { ...CURRENT_SETTINGS, liquidSurfaceMode: 'none' },
+    'contract test drained liquid mode',
+  );
   const missingLobbyName = { ...CURRENT_SETTINGS } as Partial<LobbySettings>;
   delete missingLobbyName.lobbyName;
   assertRejected(missingLobbyName, 'a packet without lobbyName');
@@ -70,6 +74,10 @@ export function runLobbySettingsContractTest(): void {
   assertRejected(
     { ...CURRENT_SETTINGS, metalCoverage: 'unknown' },
     'an unsupported metalCoverage',
+  );
+  assertRejected(
+    { ...CURRENT_SETTINGS, liquidSurfaceMode: 'unknown' },
+    'an unsupported liquidSurfaceMode',
   );
   assertRejected(
     { ...CURRENT_SETTINGS, terrainPrecedence: undefined },

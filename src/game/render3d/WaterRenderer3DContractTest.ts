@@ -16,16 +16,53 @@ import { WATER_LEVEL } from '../sim/Terrain';
 import { WATER_BOX_FACES, WaterRenderer3D } from './WaterRenderer3D';
 import { LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '@/config';
 import { createLiquidSurfaceTexture3D } from './LiquidSurfaceTexture3D';
+import {
+  getLiquidSurfaceMode,
+  setLiquidSurfaceMode,
+} from '../sim/worldSurfaceState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[water renderer contract] ${message}`);
 }
 
+function assertLiquidSceneCompiles(
+  parent: THREE.Group,
+  mapWidth: number,
+  mapHeight: number,
+): void {
+  const gpuRenderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+  gpuRenderer.debug.checkShaderErrors = true;
+  gpuRenderer.setSize(32, 32, false);
+  const scene = new THREE.Scene();
+  scene.add(parent);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 20_000);
+  camera.position.set(mapWidth * 0.5, 4_000, mapHeight * 0.5);
+  camera.lookAt(mapWidth * 0.5, WATER_LEVEL, mapHeight * 0.5);
+  const context = gpuRenderer.getContext();
+  try {
+    while (context.getError() !== context.NO_ERROR) {
+      // Clear any implementation-specific setup errors before the contract
+      // render so the result belongs to the liquid shader itself.
+    }
+    gpuRenderer.render(scene, camera);
+    assertContract(
+      context.getError() === context.NO_ERROR,
+      'the active liquid material must compile and render without a WebGL error',
+    );
+  } finally {
+    scene.remove(parent);
+    gpuRenderer.dispose();
+    gpuRenderer.forceContextLoss();
+  }
+}
+
 export function runWaterRenderer3DContractTest(): void {
-  const previousMode = getWaterBoundaryMode();
+  const previousBoundaryMode = getWaterBoundaryMode();
+  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
   const mapWidth = 4000;
   const mapHeight = 3000;
   const parent = new THREE.Group();
+  setLiquidSurfaceMode('water');
   const renderer = new WaterRenderer3D(parent, mapWidth, mapHeight);
   try {
     setWaterBoundaryMode('floating-square');
@@ -255,8 +292,60 @@ export function runWaterRenderer3DContractTest(): void {
       0,
     );
     assertContract(bottomNormal.y < -0.999, 'the bottom face must point down and out of the box');
+
+    setLiquidSurfaceMode('lava');
+    renderer.update(0, getGraphicsConfig());
+    const lavaTextureName: string | undefined = surfaceMaterial.map?.name;
+    assertContract(
+      lavaTextureName === 'LiquidSurfaceTexture:lava'
+        && !surfaceMaterial.transparent
+        && surfaceMaterial.opacity === 1
+        && surfaceMaterial.userData.liquidSurfaceShader === 'lava-flow-v2',
+      'lava must replace the water skin with an opaque animated crust material',
+    );
+    const lavaShader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      fragmentShader: '#include <map_pars_fragment>\n#include <map_fragment>',
+    };
+    (surfaceMaterial.onBeforeCompile as (shader: typeof lavaShader) => void)(lavaShader);
+    const lavaTime = lavaShader.uniforms.uLavaTime;
+    assertContract(
+      lavaTime !== undefined
+        && lavaShader.fragmentShader.includes('lavaSecondary')
+        && !lavaShader.fragmentShader.includes('#include <map_fragment>'),
+      'lava shader must layer counter-moving crust fields instead of sliding one decal',
+    );
+    const initialLavaTime = lavaTime.value as number;
+    renderer.update(1, getGraphicsConfig());
+    assertContract(
+      (lavaTime.value as number) > initialLavaTime,
+      'lava flow time must advance with rendered time',
+    );
+    assertLiquidSceneCompiles(parent, mapWidth, mapHeight);
+
+    setLiquidSurfaceMode('none');
+    renderer.update(0, getGraphicsConfig());
+    assertContract(
+      !surface.visible
+        && (surface.geometry.getAttribute('position')?.count ?? -1) === 0
+        && curtains.every(
+          (curtain) => (curtain.geometry.getAttribute('position')?.count ?? -1) === 0,
+        ),
+      'NONE must remove all liquid geometry, including the cursor-pickable surface',
+    );
+
+    setLiquidSurfaceMode('water');
+    renderer.update(0, getGraphicsConfig());
+    const restoredWaterTextureName: string | undefined = surfaceMaterial.map?.name;
+    assertContract(
+      surface.visible
+        && (surface.geometry.getAttribute('position')?.count ?? 0) > 0
+        && restoredWaterTextureName === 'LiquidSurfaceTexture:water',
+      'switching back to WATER must rebuild the surface with water material state',
+    );
   } finally {
     renderer.destroy();
-    setWaterBoundaryMode(previousMode);
+    setWaterBoundaryMode(previousBoundaryMode);
+    setLiquidSurfaceMode(previousLiquidSurfaceMode);
   }
 }

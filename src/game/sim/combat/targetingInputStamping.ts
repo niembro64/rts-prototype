@@ -51,7 +51,7 @@ import {
   getShotLocomotionMediumAtHeight,
   shotLocomotionUsesBallisticFeasibility,
 } from '../shotLocomotion';
-import { WATER_LEVEL } from '../Terrain';
+import { getLiquidSurfaceLevel } from '../worldSurfaceState';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
@@ -1167,7 +1167,7 @@ function stampCombatTargetingEntityInto(
       ? getShotLocomotionMediumAtHeight(
           projectileShot.shotLocomotion,
           launchSocket!.position.z,
-          WATER_LEVEL,
+          getLiquidSurfaceLevel(),
         )
       : undefined;
     const projectileLinearDampingRate = launchMedium
@@ -1255,7 +1255,7 @@ function stampCombatTargetingEntityInto(
       t.sustainedDps,
       projectileSpeed,
       projectileLinearDampingRate,
-      launchSocket !== undefined && launchSocket.position.z > WATER_LEVEL ? 1 : 0,
+      launchSocket !== undefined && launchSocket.position.z > getLiquidSurfaceLevel() ? 1 : 0,
       muzzleForwardOffset,
       ballisticArcPreference,
       maxTimeSec,

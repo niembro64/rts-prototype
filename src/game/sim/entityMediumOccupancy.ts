@@ -1,7 +1,7 @@
 import type { Entity } from './types';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
-import { WATER_LEVEL } from './Terrain';
 import { clamp01 } from '../math';
+import { getLiquidSurfaceLevel } from './worldSurfaceState';
 
 type EntityMediumOccupancy = {
   aboveWater: number;
@@ -19,10 +19,11 @@ function getSphericalUnderwaterFraction(
   radius: number,
 ): number {
   if (!Number.isFinite(centerZ)) return 0;
+  const waterLevel = getLiquidSurfaceLevel();
   const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 0;
-  if (safeRadius <= 0) return centerZ <= WATER_LEVEL ? 1 : 0;
+  if (safeRadius <= 0) return centerZ <= waterLevel ? 1 : 0;
   const submergedHeight = clamp01(
-    (WATER_LEVEL - (centerZ - safeRadius)) / (2 * safeRadius),
+    (waterLevel - (centerZ - safeRadius)) / (2 * safeRadius),
   ) * 2 * safeRadius;
   if (submergedHeight <= 0) return 0;
   if (submergedHeight >= 2 * safeRadius) return 1;
@@ -38,14 +39,15 @@ export function getCuboidUnderwaterFraction(
   halfHeight: number,
 ): number {
   if (!Number.isFinite(centerZ)) return 0;
+  const waterLevel = getLiquidSurfaceLevel();
   const safeHalfHeight = Number.isFinite(halfHeight) && halfHeight > 0
     ? halfHeight
     : 0;
-  if (safeHalfHeight <= 0) return centerZ <= WATER_LEVEL ? 1 : 0;
+  if (safeHalfHeight <= 0) return centerZ <= waterLevel ? 1 : 0;
   const bottomZ = centerZ - safeHalfHeight;
   const submergedHeight = Math.max(
     0,
-    Math.min(2 * safeHalfHeight, WATER_LEVEL - bottomZ),
+    Math.min(2 * safeHalfHeight, waterLevel - bottomZ),
   );
   return clamp01(submergedHeight / (2 * safeHalfHeight));
 }
@@ -71,9 +73,9 @@ export function getEntityMediumOccupancy(entity: Entity): EntityMediumOccupancy 
       entity.unit.radius.hitbox,
     );
   } else if (entity.projectile !== null) {
-    underwater = entity.transform.z <= WATER_LEVEL ? 1 : 0;
+    underwater = entity.transform.z <= getLiquidSurfaceLevel() ? 1 : 0;
   } else {
-    underwater = entity.transform.z <= WATER_LEVEL ? 1 : 0;
+    underwater = entity.transform.z <= getLiquidSurfaceLevel() ? 1 : 0;
   }
   _mediumOccupancy.underwater = underwater;
   _mediumOccupancy.aboveWater = 1 - underwater;

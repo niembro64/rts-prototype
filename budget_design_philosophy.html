@@ -1683,7 +1683,9 @@
         against the current navigation layers; otherwise the controller holds. Physical capability
         and hazard policy are separate: ordinary water may use the unit's authored wet force
         envelope, while lava removes the water domain from both MOVE and WAYPOINT routing even for a
-        body that could mechanically swim through it. Air traversal still overflies the liquid.
+        body that could mechanically swim through it. <code>LIQUID: NONE</code> removes the medium
+        itself: the authored basin floor becomes ordinary ground for movement, placement, sensing,
+        and combat. Air traversal still overflies any liquid that is present.
       </p>
       <ul class="rule-list">
         <li>Short routes never touch the hierarchy: a start and goal within <code>PATHFINDER_LOCAL_ROUTE_MAX_CLUSTER_SPAN</code> clusters (6, ~1,900 wu) search a plain fine A* over their padded cluster box (strategy <code>local</code>) and fall through to the hierarchy only when the box cannot connect. A cold hierarchical route paid ~20k work units for cluster-row builds; a boxed search pays a few hundred. Measured on the same 19-unit order in a four-bot match: median full route 351 ticks &rarr; 3, and 3 ticks against the synchronous 2026-08-24 planner's 5.</li>
@@ -2166,12 +2168,15 @@
         physical truth.
       </p>
       <p>
-        The horizontal liquid surface carries one small, seamless, world-anchored material texture.
-        Water uses a low-contrast moving flow pattern that modulates colour only: its authored alpha
-        remains the sole transparency control, so texture can never obscure the seabed or submerged
-        units. Lava uses the same flow vocabulary at stronger contrast as opaque crust and hot veins.
-        The render-only perimeter curtains stay untextured, and neither texture changes liquid
-        classification, surface height, picking, or simulation behavior.
+        <code>LIQUID</code> has three explicit states: <code>WATER</code>, <code>LAVA</code>, and
+        <code>NONE</code>. WATER&rsquo;s horizontal surface carries one small, seamless,
+        world-anchored, low-contrast flow texture that modulates colour only: authored alpha remains
+        the sole transparency control, so texture can never obscure the seabed or submerged units.
+        LAVA layers two scales of seamless cellular crust in a counter-flowing shader, keeping broad
+        plates dark while orange fissures shift and pulse; it is not one translated lava decal.
+        Render-only perimeter curtains stay untextured. NONE emits no liquid surface or curtains and
+        leaves no pickable plane; the authored basin terrain remains and becomes dry ground throughout
+        simulation and rendering.
       </p>
       <p>
         <strong>GPU boundary precision:</strong> the Windows/NVIDIA world-box shimmer was not a

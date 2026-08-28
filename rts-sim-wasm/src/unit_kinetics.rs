@@ -409,7 +409,7 @@ pub fn unit_force_water_surface_depth_world(pos_z: f64) -> f64 {
     if !pos_z.is_finite() {
         return 0.0;
     }
-    let depth = TERRAIN_WATER_LEVEL - pos_z;
+    let depth = liquid_surface_level() - pos_z;
     if depth.is_finite() && depth > 0.0 {
         depth
     } else {
@@ -427,7 +427,7 @@ pub fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
     } else {
         0.5
     };
-    let submerged_height = (TERRAIN_WATER_LEVEL - (pos_z - radius))
+    let submerged_height = (liquid_surface_level() - (pos_z - radius))
         .max(0.0)
         .min(2.0 * radius);
     if submerged_height <= 0.0 {
@@ -445,7 +445,7 @@ pub fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
 
 #[inline]
 fn unit_water_damage_for_step(origin_z: f64, damage_per_second: f64, dt_sec: f64) -> f64 {
-    if !origin_z.is_finite() || origin_z >= TERRAIN_WATER_LEVEL {
+    if !origin_z.is_finite() || origin_z >= liquid_surface_level() {
         return 0.0;
     }
     damage_per_second.max(0.0) * dt_sec.max(0.0)
@@ -465,7 +465,7 @@ fn unit_land_damage_for_step(
     if !origin_z.is_finite() || !radius.is_finite() || damage_per_second <= 0.0 {
         return 0.0;
     }
-    if origin_z - radius.max(0.0) < TERRAIN_WATER_LEVEL {
+    if origin_z - radius.max(0.0) < liquid_surface_level() {
         return 0.0;
     }
     damage_per_second * dt_sec.max(0.0)
@@ -769,11 +769,11 @@ fn unit_force_air_water_surface_inverse_distance_response(
     if has_sampled_distance_response && sampled_distance_response.is_finite() {
         return sampled_distance_response.max(0.0);
     }
-    if ground_z >= TERRAIN_WATER_LEVEL {
+    if ground_z >= liquid_surface_level() {
         return 0.0;
     }
     unit_force_surface_lift_inverse_distance_response(
-        support_z - TERRAIN_WATER_LEVEL,
+        support_z - liquid_surface_level(),
         minimum_distance_world,
     )
 }
@@ -1687,7 +1687,7 @@ fn unit_force_step_batch_core(
                         .is_finite()
                 {
                     rows[base + UF_ROW_WATER_SURFACE_FOLLOWING_PROPORTIONAL_PROPOSED_FORCE].max(0.0)
-                } else if ground_z < TERRAIN_WATER_LEVEL {
+                } else if ground_z < liquid_surface_level() {
                     proportional_lift_force_from_water_surface.max(0.0)
                         * unit_force_water_surface_depth_world(support_z)
                 } else {

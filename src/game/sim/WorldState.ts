@@ -286,7 +286,8 @@ export class WorldState {
   // and suppresses the discrete deposit crowns; the deposits still shaped the
   // terrain. See types/worldSurfaceMode.
   public metalCoverage: MetalCoverage = DEFAULT_METAL_COVERAGE;
-  // What fills the map below WATER_LEVEL. `lava` burns anything touching it.
+  // What fills the map below WATER_LEVEL. `lava` burns anything touching it;
+  // `none` removes the liquid medium and exposes the authored terrain bed.
   public liquidSurfaceMode: LiquidSurfaceMode = DEFAULT_LIQUID_SURFACE_MODE;
   /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick
    *  output. 0 = lossless; 0.5 = lose half of the source resource on

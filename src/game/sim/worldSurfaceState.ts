@@ -4,7 +4,8 @@
 // hash). This module mirrors it as module-scoped battle state — the same shape
 // terrainState.ts uses for the terrain magnitudes — because the 3D renderers
 // are constructed with a THREE.Group, not the sim world, and still have to
-// know whether the ground is metal and whether the liquid is lava.
+// know whether the ground is metal and whether the liquid is water, lava, or
+// absent.
 //
 // Set from the battle-construction paths (RtsScene3D / LobbyManager /
 // ServerBootstrap) alongside the terrain runtime config.
@@ -18,6 +19,7 @@ import {
   type LiquidSurfaceMode,
   type MetalCoverage,
 } from '../../types/worldSurfaceMode';
+import { getSimWasm } from '../sim-wasm/init';
 import { WATER_LEVEL } from './terrain/terrainConfig';
 
 let metalCoverage: MetalCoverage = DEFAULT_METAL_COVERAGE;
@@ -29,6 +31,19 @@ export function getMetalCoverage(): MetalCoverage {
 
 export function getLiquidSurfaceMode(): LiquidSurfaceMode {
   return liquidSurfaceMode;
+}
+
+/** Whether the authored liquid plane is physically present. WATER and LAVA
+ *  share the same plane; NONE exposes the terrain bed as ordinary ground. */
+export function liquidSurfaceExists(): boolean {
+  return liquidSurfaceMode !== 'none';
+}
+
+/** Runtime medium boundary. Terrain generation still uses WATER_LEVEL as its
+ *  authored datum, but NONE puts the effective plane below every finite body
+ *  and terrain height without reshaping the map. */
+export function getLiquidSurfaceLevel(): number {
+  return liquidSurfaceExists() ? WATER_LEVEL : Number.NEGATIVE_INFINITY;
 }
 
 /** True when the whole map is metal ore: no discrete deposit crowns are built,
@@ -47,10 +62,9 @@ export function isLavaLiquidSurface(): boolean {
 /** Whether anything grows on the current world. Vegetation belongs to the
  *  authored world and nothing else: a map made of metal has no soil, and a
  *  world whose sea is molten rock is no place for anything to grow — not even
- *  inland, well away from the lava. So only a world that is NOT all metal and
- *  still has WATER grows trees, grass, and seaweed; ALL metal or LAVA leaves it
- *  barren. Kind-agnostic, so a new vegetation kind inherits the rule for
- *  free. */
+ *  inland, well away from the lava. A drained NONE world remains fertile; the
+ *  placement kernel classifies its exposed basins as land and emits no
+ *  seaweed. ALL metal or LAVA leaves the world barren. */
 export function vegetationSupported(): boolean {
   return !isMetalTerrainSurface() && !isLavaLiquidSurface();
 }
@@ -73,7 +87,12 @@ export function setMetalCoverage(mode: MetalCoverage): boolean {
 }
 
 export function setLiquidSurfaceMode(mode: LiquidSurfaceMode): boolean {
-  if (!isLiquidSurfaceMode(mode) || mode === liquidSurfaceMode) return false;
+  if (!isLiquidSurfaceMode(mode)) return false;
+  // The WASM module defaults to WATER for cold boot, but every bootstrap calls
+  // this after initialization too. Synchronize even when the TS value already
+  // matches so a persisted NONE selection cannot leave the kernels wet.
+  getSimWasm()?.liquidSurfaceSetEnabled(mode !== 'none');
+  if (mode === liquidSurfaceMode) return false;
   liquidSurfaceMode = mode;
   return true;
 }

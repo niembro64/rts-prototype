@@ -104,14 +104,15 @@ pub(crate) fn pathfinder_position_is_in_navigation_domain(
         return false;
     }
     let height = pathfinder_sample_terrain(x, y).0;
-    if height < TERRAIN_WATER_LEVEL {
+    let water_level = liquid_surface_level();
+    if height < water_level {
         // Exact points share the cell fording rule: ankle-deep water whose
         // depth stays under the body's resting center height is valid ground.
         pathfinder_allows_water_case(traversal)
             || (traversal.allow_ground
                 && !traversal.allow_air
                 && state.cur_unit_radius > 0.0
-                && (TERRAIN_WATER_LEVEL - height) <= pathfinder_query_body_center_height(state))
+                && (water_level - height) <= pathfinder_query_body_center_height(state))
     } else {
         pathfinder_allows_exposed_case(traversal)
     }
@@ -178,7 +179,7 @@ pub(crate) fn pathfinder_is_cell_passable_impl(
         && !traversal.allow_air
         && !pathfinder_allows_water_case(traversal)
         && state.cur_unit_radius > 0.0
-        && (TERRAIN_WATER_LEVEL - state.terrain_height[idx] as f64)
+        && (liquid_surface_level() - state.terrain_height[idx] as f64)
             <= pathfinder_query_body_center_height(state);
     // Every medium present in the square must be valid.
     let passable_by_medium = (!has_exposed || allows_exposed)

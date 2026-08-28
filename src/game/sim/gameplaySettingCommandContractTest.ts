@@ -129,6 +129,7 @@ function buildSettingCases(): SettingCase[] {
       read: (world) => world.liquidSurfaceMode,
       candidates: [
         { command: { type: 'setLiquidSurfaceMode', tick: 0, mode: 'lava' }, value: 'lava' },
+        { command: { type: 'setLiquidSurfaceMode', tick: 0, mode: 'none' }, value: 'none' },
         { command: { type: 'setLiquidSurfaceMode', tick: 0, mode: 'water' }, value: 'water' },
       ],
     },

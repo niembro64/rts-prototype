@@ -98,7 +98,7 @@ import {
   buildSensorSignatureRig3D,
   syncSensorSignatureRig3D,
 } from './SensorSignatureRig3D';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { getLiquidSurfaceLevel } from '../sim/worldSurfaceState';
 
 const BUILDING_HEIGHT = 120;
 
@@ -354,12 +354,13 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
 
   const sensorRadiiHostRadius = Math.min(localWidth, localDepth) * 0.5;
   const buildingBaseZ = entity.transform.z - (entity.building?.depth ?? 0) * 0.5;
-  const localWaterlineY = WATER_LEVEL - buildingBaseZ;
+  const liquidSurfaceLevel = getLiquidSurfaceLevel();
+  const localWaterlineY = liquidSurfaceLevel - buildingBaseZ;
   const sensorSignatureRig = buildSensorSignatureRig3D(entity, {
     hostRadius: sensorRadiiHostRadius,
     mount: {
       x: 0,
-      y: entity.transform.z < WATER_LEVEL
+      y: entity.transform.z < liquidSurfaceLevel
         ? Math.min(shape.height * 0.42, localWaterlineY - Math.max(4, sensorRadiiHostRadius * 0.08))
         : shape.height * 0.88,
       z: 0,

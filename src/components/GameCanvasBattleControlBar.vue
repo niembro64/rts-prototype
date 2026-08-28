@@ -4,8 +4,11 @@ import { BATTLE_CONFIG } from '../battleBarConfig';
 import { SERVER_CONFIG } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import {
+  LIQUID_SURFACE_MODES,
+  LIQUID_SURFACE_MODE_LABEL,
   METAL_COVERAGES,
   METAL_COVERAGE_LABEL,
+  type LiquidSurfaceMode,
   type MetalCoverage,
 } from '../types/worldSurfaceMode';
 import {
@@ -82,6 +85,12 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
   some: 'SOME: one standard-size ore body on every deposit spot.',
   more: 'MORE: the authored per-ring ore sizes, so the middle of the map carries the big bodies.',
   all: 'ALL: the entire map is one polished ore body. No separate ore bodies, every build cell pays metal, and the world goes barren.',
+};
+
+const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
+  water: 'WATER: fill terrain below the liquid level with the authored translucent sea.',
+  lava: 'LAVA: fill terrain below the liquid level with opaque, animated molten rock that rapidly damages anything touching it.',
+  none: 'NONE: remove the liquid surface and liquid medium entirely, exposing basin terrain as dry ground.',
 };
 </script>
 
@@ -404,11 +413,16 @@ const METAL_COVERAGE_TITLE: Record<MetalCoverage, string> = {
             @click="model.setMetalCoverage(coverage)"
           >{{ METAL_COVERAGE_LABEL[coverage] }}</BarButton>
         </BarButtonGroup>
-        <BarButton
-          :active="model.currentLiquidSurfaceMode === 'lava'"
-          title="ON fills the map below the water level with opaque molten rock that drains health very fast from anything touching its surface. OFF is the authored sea."
-          @click="model.setLiquidSurfaceMode(model.currentLiquidSurfaceMode === 'lava' ? 'water' : 'lava')"
-        >LAVA</BarButton>
+        <BarLabel title="What occupies the authored liquid plane. NONE drains it completely and exposes the basin floor.">LIQUID:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="liquidMode in LIQUID_SURFACE_MODES"
+            :key="liquidMode"
+            :active="model.currentLiquidSurfaceMode === liquidMode"
+            :title="LIQUID_SURFACE_MODE_TITLE[liquidMode]"
+            @click="model.setLiquidSurfaceMode(liquidMode)"
+          >{{ LIQUID_SURFACE_MODE_LABEL[liquidMode] }}</BarButton>
+        </BarButtonGroup>
         <BarDivider />
         <BarLabel title="All cells must fit the unit's medium-specific force envelope. This chooses whether the inter-cell climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
         <BarButton

@@ -2403,19 +2403,20 @@ pub(crate) fn combat_targeting_resolve_aim_point_from_slab(
             top_z: bottom_z,
             is_point: true,
         };
-        if top_z > TERRAIN_WATER_LEVEL
+        let water_level = liquid_surface_level();
+        if top_z > water_level
             && combat_targeting_flags_allow_target_medium(flags, mount_z, above_point)
         {
-            let above_interior_z = if body_point.2 > TERRAIN_WATER_LEVEL {
+            let above_interior_z = if body_point.2 > water_level {
                 body_point.2.min(top_z)
             } else {
-                TERRAIN_WATER_LEVEL + (top_z - TERRAIN_WATER_LEVEL) * 0.5
+                water_level + (top_z - water_level) * 0.5
             };
             body_point.2 = above_interior_z;
-        } else if bottom_z < TERRAIN_WATER_LEVEL
+        } else if bottom_z < water_level
             && combat_targeting_flags_allow_target_medium(flags, mount_z, underwater_point)
         {
-            body_point.2 = body_point.2.max(bottom_z).min(TERRAIN_WATER_LEVEL);
+            body_point.2 = body_point.2.max(bottom_z).min(water_level);
         }
     }
     let Some(target_turret_idx) = target_turret_idx else {
@@ -2706,7 +2707,7 @@ pub(crate) fn combat_targeting_range_volume_allows_target_domain(
     volume: CombatTargetingRangeVolume,
     target: CombatTargetingCylinderTarget,
 ) -> bool {
-    !volume.water_surface_ceiling || target.bottom_z <= TERRAIN_WATER_LEVEL
+    !volume.water_surface_ceiling || target.bottom_z <= liquid_surface_level()
 }
 
 #[inline]
@@ -2720,13 +2721,14 @@ pub(crate) fn combat_targeting_flags_allow_target_medium(
     target: CombatTargetingCylinderTarget,
 ) -> bool {
     let routes = flags & CT_TURRET_CFG_ROUTE_MASK;
-    let target_above = target.top_z > TERRAIN_WATER_LEVEL;
+    let water_level = liquid_surface_level();
+    let target_above = target.top_z > water_level;
     let target_underwater = if target.is_point {
-        target.bottom_z <= TERRAIN_WATER_LEVEL
+        target.bottom_z <= water_level
     } else {
-        target.bottom_z < TERRAIN_WATER_LEVEL
+        target.bottom_z < water_level
     };
-    if source_z <= TERRAIN_WATER_LEVEL {
+    if source_z <= water_level {
         ((routes & CT_TURRET_CFG_ROUTE_UNDERWATER_TO_ABOVE) != 0 && target_above)
             || ((routes & CT_TURRET_CFG_ROUTE_UNDERWATER_TO_UNDERWATER) != 0 && target_underwater)
     } else {

@@ -33,6 +33,7 @@ import {
   getSurfaceHeight,
   WATER_LEVEL,
 } from './Terrain';
+import { getSensorMediumAtZ } from './sensorCoverage';
 import {
   getBuildingPlacementBaseZ,
   getSeaOnSurfaceSubmergedDepth,
@@ -225,10 +226,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const sensorMountZ = getBuildingBlueprint(candidateType).turrets.find(
     (mount) => mount.mountId === requiredSensorSourceMedium?.mountId,
   )?.mount.z ?? 0;
-  const centerSensorSourceMedium =
-    centerPlacementBaseZ + sensorMountZ < WATER_LEVEL
-      ? 'underwater'
-      : 'aboveWater';
+  const centerSensorSourceMedium = getSensorMediumAtZ(
+    centerPlacementBaseZ + sensorMountZ,
+  );
   const sensorSourceMediumMismatch =
     requiredSensorSourceMedium !== null &&
     centerSensorSourceMedium !== requiredSensorSourceMedium.medium;

@@ -576,6 +576,9 @@ export interface SimWasm {
   ) => number;
   readonly unitForceWaterSurfaceDepthWorld: (bodyZ: number) => number;
   readonly unitForceWaterFraction: (bodyZ: number, bodyRadius: number) => number;
+  /** Installs whether the authored water plane exists for every WASM medium
+   *  classifier. False exposes all finite terrain as dry ground/air. */
+  readonly liquidSurfaceSetEnabled: (enabled: boolean) => void;
   /** Blueprint locomotion constants table for unitForceStepBatch,
    *  code-indexed. Ensure BEFORE taking the pointers (resize moves
    *  them); fill once when blueprints are ready. */
@@ -1270,8 +1273,9 @@ export interface SimWasm {
   /** Sample terrain surface height at world-space (x, z). Returns
    *  NaN if no mesh is installed or the triangle walk degenerates;
    *  JS callers treat NaN as "fall back to TS sampler" since that
-   *  handles the bilinear-quad-over-noise path. The mesh-installed
-   *  return is max(WATER_LEVEL, triangle_height). */
+   *  handles the bilinear-quad-over-noise path. With liquid present the
+   *  mesh-installed return is max(WATER_LEVEL, triangle_height); NONE
+   *  returns the exposed triangle height. */
   readonly terrainGetSurfaceHeight: (x: number, z: number) => number;
   /** Raw terrain-bed height at world-space (x, z), without water-plane clamp. */
   readonly terrainGetBedHeight: (x: number, z: number) => number;
@@ -1283,8 +1287,8 @@ export interface SimWasm {
   ) => number;
   /** Sample terrain surface normal at world-space (x, z). Writes
    *  (nx, ny, nz) into out[0..3] and returns 1 on success, 0 if no
-   *  mesh is installed or the triangle walk fails. Below-water
-   *  samples return (0, 0, 1) — flat water surface normal. */
+   *  mesh is installed or the triangle walk fails. Samples below a present
+   *  liquid plane return (0, 0, 1); NONE returns the terrain-bed normal. */
   readonly terrainGetSurfaceNormal: (x: number, z: number, out: Float64Array) => number;
   /** Raw terrain-bed normal at world-space (x, z), without flattening
    *  below-water samples to the water-surface normal. */

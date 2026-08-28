@@ -15,7 +15,7 @@ import { buildingBlueprintIdToCode, unitBlueprintIdToCode } from '../../types/ne
 import { emissionMediumAtZ } from './emissionMedium';
 import { getEntityMediumOccupancy } from './entityMediumOccupancy';
 import { getBuildingCombatCenterZ } from './buildingAnchors';
-import { WATER_LEVEL } from './Terrain';
+import { getLiquidSurfaceLevel } from './worldSurfaceState';
 import { lockOnLevel1MaskAllows } from './lockOnLevel1Mask';
 
 type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
@@ -362,7 +362,7 @@ export function entityCanBarAttackTarget(source: Entity, target: Entity | null |
   const sourceZ = source.building !== null
     ? getBuildingCombatCenterZ(source)
     : source.transform.z;
-  const sourceMedium = emissionMediumAtZ(sourceZ, WATER_LEVEL);
+  const sourceMedium = emissionMediumAtZ(sourceZ, getLiquidSurfaceLevel());
   // KERNEL PARITY: the auto-targeting kernel tests the target's BODY
   // VOLUME against the water plane (top above / bottom below), never its
   // center point — a floating ship's submerged hull is a legal torpedo

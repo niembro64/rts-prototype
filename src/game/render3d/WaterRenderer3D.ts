@@ -1,7 +1,8 @@
-// WaterRenderer3D — transparent water surface at WATER_LEVEL with four
+// WaterRenderer3D — WATER or LAVA surface at WATER_LEVEL with four
 // independently sorted perimeter curtains plus a bottom face in
-// floating-square modes, so the liquid is a closed box rather than an
-// open-bottomed shell.
+// floating-square modes, so present liquid is a closed box rather than an
+// open-bottomed shell. NONE retains only a stable empty mesh handle for
+// callers and emits no renderable or pickable geometry.
 //
 // In infinity mode water is one large horizontal plane. The submerged land
 // that makes CIRCLE perimeter mode continuous is emitted by
@@ -16,7 +17,8 @@ import {
 } from '@/clientBarConfig';
 import { WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '../../config';
-import { isLavaLiquidSurface } from '../sim/worldSurfaceState';
+import { getLiquidSurfaceMode } from '../sim/worldSurfaceState';
+import type { LiquidSurfaceMode } from '../../types/worldSurfaceMode';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
@@ -68,6 +70,45 @@ function lavaSurfaceColor(): THREE.Color {
 
 const WATER_TRIANGLE_DEBUG_COLOR = 0xfff17a;
 const WATER_TRIANGLE_DEBUG_OPACITY = 0.95;
+
+/** Lava is not a translated decal. Two scales of the seamless crust field
+ * counter-flow through one another, warping and exposing hot fissures while
+ * the larger plates remain dark. MeshBasicMaterial still supplies the scene's
+ * ordinary fog/tone-mapping path; this only replaces its stock map multiply. */
+const LAVA_MAP_FRAGMENT = `
+#ifdef USE_MAP
+  vec2 lavaFlow = uLavaFlowUvPerSecond * uLavaTime;
+  vec3 lavaPrimary = texture2D(map, vMapUv + lavaFlow).rgb;
+  vec2 lavaWarp = (lavaPrimary.gb - vec2(0.5)) * 0.075;
+  vec3 lavaSecondary = texture2D(
+    map,
+    vMapUv * 1.83 - lavaFlow * 0.71 + lavaWarp
+  ).rgb;
+  vec3 lavaTertiary = texture2D(
+    map,
+    vMapUv * 0.53 + lavaFlow * vec2(-0.19, 0.31) - lavaWarp * 0.45
+  ).rgb;
+  float lavaFissure = max(
+    lavaPrimary.r,
+    max(lavaSecondary.r * 0.78, lavaTertiary.r * 0.62)
+  );
+  float lavaCore = max(lavaPrimary.g, lavaSecondary.g * 0.86);
+  float lavaPulse = 0.88 + 0.12 * sin(
+    uLavaTime * 1.15 + lavaTertiary.b * 6.2831853
+  );
+  vec3 lavaMultiplier = mix(
+    vec3(0.055, 0.032, 0.022),
+    vec3(0.92, 0.44, 0.08),
+    smoothstep(0.08, 0.72, lavaFissure)
+  );
+  lavaMultiplier = mix(
+    lavaMultiplier,
+    vec3(1.08, 1.72, 0.48),
+    smoothstep(0.58, 0.98, lavaCore) * lavaPulse
+  );
+  diffuseColor.rgb *= lavaMultiplier;
+#endif
+`;
 
 // The horizontal surface is a rectilinear grid, not one giant quad. Depth
 // at a pixel is interpolated from that triangle's own vertices, so a quad
@@ -266,6 +307,8 @@ export class WaterRenderer3D {
   private liquidTexture: THREE.DataTexture;
   private liquidTextureTileWorldSize: number;
   private liquidTextureScrollUvPerSecond: THREE.Vector2;
+  private readonly lavaTimeUniform = { value: 0 };
+  private readonly lavaFlowUvPerSecondUniform = { value: new THREE.Vector2() };
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -273,6 +316,7 @@ export class WaterRenderer3D {
   private lastTriangleDebugVisible = false;
   private lastOpacity = Number.NaN;
   private lastWaterBoundaryMode: WaterBoundaryMode | null = null;
+  private lastLiquidSurfaceMode: LiquidSurfaceMode;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
@@ -285,10 +329,12 @@ export class WaterRenderer3D {
     // otherwise this depth write would erase submerged instanced bodies.
     // WATER_FULLY_OPAQUE additionally disables alpha blending; triangles
     // beneath the ocean are culled in TerrainTileRenderer3D for that mode.
-    // LIQUID = LAVA swaps the surface for opaque molten rock. Same
-    // MeshBasicMaterial (unlit, still tone mapped), but the colour is scaled
-    // past 1.0 so ACES renders it as an emitter rather than as red paint.
-    const lava = isLavaLiquidSurface();
+    // LIQUID = LAVA swaps the surface for opaque molten rock. Same base
+    // material path (unlit, still tone mapped), with a small shader extension
+    // for counter-flowing crust. LIQUID = NONE keeps this stable mesh object
+    // for callers but gives it no geometry at all.
+    this.lastLiquidSurfaceMode = getLiquidSurfaceMode();
+    const lava = this.lastLiquidSurfaceMode === 'lava';
     const textureConfig = lava
       ? LAVA_RENDER_CONFIG.texture
       : WATER_RENDER_CONFIG.texture;
@@ -301,6 +347,7 @@ export class WaterRenderer3D {
       textureConfig.scrollWorldUnitsPerSecondX / textureConfig.tileWorldSize,
       textureConfig.scrollWorldUnitsPerSecondZ / textureConfig.tileWorldSize,
     );
+    this.lavaFlowUvPerSecondUniform.value.copy(this.liquidTextureScrollUvPerSecond);
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: lava ? lavaSurfaceColor() : WATER_RENDER_CONFIG.color,
       map: this.liquidTexture,
@@ -318,6 +365,7 @@ export class WaterRenderer3D {
     // above and below water without letting driver-specific depth rounding
     // differ between two passes over the same triangles.
     this.waterMaterial.forceSinglePass = true;
+    this.configureSurfaceShader(lava);
     this.waterCurtainMaterial = this.waterMaterial.clone();
     // Flow grain belongs to the horizontal skin. Stretching it down the
     // render-only world-box curtains would turn every wave into a long stripe.
@@ -336,6 +384,8 @@ export class WaterRenderer3D {
     this.waterCurtainMaterial.polygonOffset = false;
     this.waterCurtainMaterial.polygonOffsetFactor = 0;
     this.waterCurtainMaterial.polygonOffsetUnits = 0;
+    this.waterCurtainMaterial.onBeforeCompile = () => {};
+    this.waterCurtainMaterial.customProgramCacheKey = () => 'liquid-curtain-v1';
 
     this.waterMesh = new THREE.Mesh(this.waterGeometry, this.waterMaterial);
     this.waterMesh.name = 'WaterSurface';
@@ -384,6 +434,77 @@ export class WaterRenderer3D {
    *  when geometry is rebuilt for a different boundary presentation mode. */
   getMesh(): THREE.Mesh {
     return this.waterMesh;
+  }
+
+  private configureSurfaceShader(lava: boolean): void {
+    if (!lava) {
+      this.waterMaterial.onBeforeCompile = () => {};
+      this.waterMaterial.customProgramCacheKey = () => 'water-surface-v1';
+      this.waterMaterial.userData.liquidSurfaceShader = 'water';
+      this.waterMaterial.needsUpdate = true;
+      return;
+    }
+    this.waterMaterial.onBeforeCompile = (shader): void => {
+      shader.uniforms.uLavaTime = this.lavaTimeUniform;
+      shader.uniforms.uLavaFlowUvPerSecond = this.lavaFlowUvPerSecondUniform;
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <map_pars_fragment>',
+          '#include <map_pars_fragment>\nuniform float uLavaTime;\nuniform vec2 uLavaFlowUvPerSecond;',
+        )
+        .replace('#include <map_fragment>', LAVA_MAP_FRAGMENT);
+    };
+    this.waterMaterial.customProgramCacheKey = () => 'lava-surface-flow-v2';
+    this.waterMaterial.userData.liquidSurfaceShader = 'lava-flow-v2';
+    this.waterMaterial.needsUpdate = true;
+  }
+
+  private configureLiquidMaterial(mode: Exclude<LiquidSurfaceMode, 'none'>): void {
+    const lava = mode === 'lava';
+    const textureConfig = lava
+      ? LAVA_RENDER_CONFIG.texture
+      : WATER_RENDER_CONFIG.texture;
+    const previousTexture = this.liquidTexture;
+    this.liquidTexture = createLiquidSurfaceTexture3D(mode, textureConfig);
+    this.liquidTextureTileWorldSize = textureConfig.tileWorldSize;
+    this.liquidTextureScrollUvPerSecond.set(
+      textureConfig.scrollWorldUnitsPerSecondX / textureConfig.tileWorldSize,
+      textureConfig.scrollWorldUnitsPerSecondZ / textureConfig.tileWorldSize,
+    );
+    this.lavaFlowUvPerSecondUniform.value.copy(this.liquidTextureScrollUvPerSecond);
+    this.lavaTimeUniform.value = 0;
+
+    this.waterMaterial.color.copy(
+      lava ? lavaSurfaceColor() : new THREE.Color(WATER_RENDER_CONFIG.color),
+    );
+    this.waterMaterial.map = this.liquidTexture;
+    this.waterMaterial.transparent = !lava && !WATER_FULLY_OPAQUE;
+    this.waterMaterial.opacity = lava || WATER_FULLY_OPAQUE
+      ? 1
+      : WATER_RENDER_CONFIG.opacity;
+    this.configureSurfaceShader(lava);
+
+    this.waterCurtainMaterial.color.copy(this.waterMaterial.color);
+    this.waterCurtainMaterial.transparent = this.waterMaterial.transparent;
+    this.waterCurtainMaterial.opacity = this.waterMaterial.opacity;
+    this.waterCurtainMaterial.needsUpdate = true;
+    this.lastOpacity = this.waterMaterial.opacity;
+    previousTexture.dispose();
+
+    // The mode can change the texture's world scale, so every world-anchored
+    // UV must be regenerated together with the geometry.
+    this.built = false;
+    this.lastWaterBoundaryMode = null;
+  }
+
+  private clearLiquidGeometry(): void {
+    this.setGeometry(this.waterGeometry, [], [], []);
+    for (const curtain of this.waterCurtains) {
+      this.setGeometry(curtain.geometry, [], [], []);
+    }
+    this.rebuildTriangleGeometry([]);
+    this.built = false;
+    this.lastWaterBoundaryMode = null;
   }
 
   private buildInfinityGeometry(): void {
@@ -713,7 +834,22 @@ export class WaterRenderer3D {
     _frameState?: RenderFrameState3D,
     _sharedRenderGrid?: unknown,
   ): void {
-    const opacity = isLavaLiquidSurface() || WATER_FULLY_OPAQUE
+    const liquidSurfaceMode = getLiquidSurfaceMode();
+    if (liquidSurfaceMode !== this.lastLiquidSurfaceMode) {
+      if (liquidSurfaceMode === 'none') {
+        this.clearLiquidGeometry();
+      } else {
+        this.configureLiquidMaterial(liquidSurfaceMode);
+      }
+      this.lastLiquidSurfaceMode = liquidSurfaceMode;
+    }
+    if (liquidSurfaceMode === 'none') {
+      this.setVisible(false);
+      this.setTriangleDebugVisible(false);
+      return;
+    }
+
+    const opacity = liquidSurfaceMode === 'lava' || WATER_FULLY_OPAQUE
       ? 1
       : WATER_RENDER_CONFIG.opacity;
     if (opacity <= 0) {
@@ -731,12 +867,16 @@ export class WaterRenderer3D {
       this.lastOpacity = opacity;
     }
     if (Number.isFinite(dtSec) && dtSec > 0) {
-      this.liquidTexture.offset.x = (
-        this.liquidTexture.offset.x + this.liquidTextureScrollUvPerSecond.x * dtSec
-      ) % 1;
-      this.liquidTexture.offset.y = (
-        this.liquidTexture.offset.y + this.liquidTextureScrollUvPerSecond.y * dtSec
-      ) % 1;
+      if (liquidSurfaceMode === 'lava') {
+        this.lavaTimeUniform.value = (this.lavaTimeUniform.value + dtSec) % 10_000;
+      } else {
+        this.liquidTexture.offset.x = (
+          this.liquidTexture.offset.x + this.liquidTextureScrollUvPerSecond.x * dtSec
+        ) % 1;
+        this.liquidTexture.offset.y = (
+          this.liquidTexture.offset.y + this.liquidTextureScrollUvPerSecond.y * dtSec
+        ) % 1;
+      }
     }
     this.setVisible(true);
     this.setTriangleDebugVisible(getWaterTriangleDebug());

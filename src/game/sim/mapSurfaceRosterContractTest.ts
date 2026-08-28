@@ -102,6 +102,10 @@ function assertWaterQuestion(): void {
     'molten rock filling an excavated basin must not count as water',
   );
   assertContract(
+    !mapHasWaterForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'none' }),
+    'an excavated basin with no liquid plane must not count as water',
+  );
+  assertContract(
     mapHasWaterForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'water' }),
     'one negative magnitude under a water liquid must be enough for water',
   );
@@ -157,10 +161,12 @@ function assertLandQuestion(): void {
     }),
     'even a map whose every bar digs keeps its baseline ground — the bars carve features, they cannot flood the map',
   );
-  // The liquid is irrelevant to the land question — lava fills basins.
+  // The liquid is irrelevant to the land question. Lava fills basins; NONE
+  // simply exposes those authored basin floors as more dry ground.
   assertContract(
     mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'lava' }) &&
-      mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'water' }),
+      mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'water' }) &&
+      mapHasLandForSetup({ ...WET_MAGNITUDES, liquidSurfaceMode: 'none' }),
     'the land answer must ignore what fills the basins',
   );
   for (const preset of BATTLE_PRESETS) {

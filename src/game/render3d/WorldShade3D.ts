@@ -10,7 +10,7 @@ import type { FootprintBounds } from '../ViewportFootprint';
 import { ENTITY_SHADOW_RENDER_CONFIG } from '../../config';
 import { SUN_DIRECTION_SIM } from './SunLighting';
 import type { EntityShadowRenderPacket3D } from './EntityShadowRenderPacket3D';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { getLiquidSurfaceLevel } from '../sim/worldSurfaceState';
 import { resolveMapInfoAnnexFootprint } from './MapInfoAnnex3D';
 import { clamp01 } from '../math';
 
@@ -344,7 +344,9 @@ export class WorldShade3D {
    *  match — the headland is a pure function of the map size. */
   private readonly annexMinUniform: { value: THREE.Vector2 };
   private readonly annexMaxUniform: { value: THREE.Vector2 };
-  private readonly waterLevelUniform = { value: WATER_LEVEL };
+  private readonly waterLevelUniform = {
+    value: WorldShade3D.shaderLiquidSurfaceLevel(),
+  };
   private readonly fogEnabledUniform = { value: 0 };
   private readonly shadeColorUniform = { value: SHADE_COLOR };
   private readonly unseenDarknessUniform = { value: 0 };
@@ -507,6 +509,7 @@ void main() {
     visibleBounds: FootprintBounds,
     updateCoverage = true,
   ): void {
+    this.waterLevelUniform.value = WorldShade3D.shaderLiquidSurfaceLevel();
     this.fogEnabledUniform.value = settings.enabled ? 1 : 0;
     this.jammerTintEnabledUniform.value = settings.jammerTintEnabled ? 1 : 0;
     this.unseenDarknessUniform.value = clamp01(settings.unseenDarkness);
@@ -584,6 +587,11 @@ void main() {
     this.uploadRegions();
     this.renderCoverageLayer(GROUND_OVERLAY_COVERAGE_LAYER);
     this.hasRenderedCoverage = true;
+  }
+
+  private static shaderLiquidSurfaceLevel(): number {
+    const level = getLiquidSurfaceLevel();
+    return Number.isFinite(level) ? level : -1.0e30;
   }
 
   assignUniforms(shader: WorldShadeShader): void {

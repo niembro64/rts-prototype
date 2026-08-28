@@ -1,10 +1,11 @@
 // Six orthogonal team sensing fields.
 //
 // Every mounted suite is scalar. The host entity's origin chooses exactly one
-// medium for vision, radar, and jamming: z >= WATER_LEVEL is air, z below it
-// is water. The mount remains the LOS/radius center but never chooses the
-// field. These checks pin the authored data, JS snapshot visibility, and the
-// native targeting masks to that same rule.
+// medium for vision, radar, and jamming: with liquid present, z >= WATER_LEVEL
+// is air and z below it is water; with NONE, every finite origin is air. The
+// mount remains the LOS/radius center but never chooses the field. These
+// checks pin authored data, JS snapshot visibility, and native targeting masks
+// to that same rule.
 import rawTurrets from '../sim/blueprints/turrets.json';
 import { SnapshotVisibility } from './stateSerializerVisibility';
 import { WorldState } from '../sim/WorldState';
@@ -25,6 +26,10 @@ import {
 import { MAX_JAMMING_RADIUS } from '../sim/sensorConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, PlayerId } from '../sim/types';
+import {
+  getLiquidSurfaceMode,
+  setLiquidSurfaceMode,
+} from '../sim/worldSurfaceState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[six-field sensor contract] ${message}`);
@@ -283,14 +288,49 @@ function assertHostOriginJammingRouting(): void {
   );
 }
 
+function assertDrainedBasinsUseAirFields(): void {
+  const world = createWorld();
+  const exposed = findSubmergedCorridor(world, 500);
+  const source = spawn(world, exposed.x, exposed.y, exposed.depth, 1, {
+    visionRadius: 500,
+    radarRadius: 700,
+  });
+  const target = spawn(world, exposed.x + 200, exposed.y, exposed.depth, 3);
+  let hostMedium: string | undefined;
+  forEachEntityTurretSensorSource(source, (sensor) => {
+    hostMedium = sensor.hostMedium;
+  });
+  stampCombatTargetingPool(world);
+  const sim = getSimWasm();
+  assertContract(sim !== undefined, 'sim-wasm must be initialized for drained-medium checks');
+  const views = getCombatTargetingStateViews(sim);
+  assertContract(
+    hostMedium === 'aboveWater'
+      && (views.teamAirSightMask[target.entitySlotId] & 1) !== 0
+      && (views.teamAirRadarMask[target.entitySlotId] & 1) !== 0
+      && (views.teamWaterSightMask[target.entitySlotId] & 1) === 0
+      && (views.teamWaterSonarMask[target.entitySlotId] & 1) === 0,
+    'a drained basin must route both JS sources and native target occupancy exclusively through air fields',
+  );
+}
+
 export function runSensorWaterlineSightContractTest(): void {
   assertAuthoredScalarSuites();
   const previousMap = getAuthoritativeTerrainTileMap();
+  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
   setAuthoritativeTerrainTileMap(buildTerrainTileMap(4096, 4096));
+  setLiquidSurfaceMode('water');
   try {
     assertHostOriginVisionAndRadarRouting();
     assertHostOriginJammingRouting();
+    setLiquidSurfaceMode('none');
+    assertContract(
+      getSensorMediumAtZ(WATER_LEVEL - 100_000) === 'aboveWater',
+      'without a liquid plane, even an exposed basin far below datum must route vision, radar, and jamming to air',
+    );
+    assertDrainedBasinsUseAirFields();
   } finally {
+    setLiquidSurfaceMode(previousLiquidSurfaceMode);
     setAuthoritativeTerrainTileMap(previousMap);
     spatialGrid.clear();
   }

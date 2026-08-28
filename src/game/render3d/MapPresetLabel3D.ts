@@ -59,7 +59,8 @@ import * as THREE from 'three';
 import { MAP_PRESET_LABEL_RENDER_CONFIG } from '@/config';
 import { COLORS } from '@/colorsConfig';
 import { NAME_LABEL_FONT_FAMILY } from '@/nameLabelConfig';
-import { getTerrainMeshHeight, WATER_LEVEL } from '../sim/Terrain';
+import { getTerrainMeshHeight } from '../sim/Terrain';
+import { getLiquidSurfaceLevel } from '../sim/worldSurfaceState';
 import {
   groupNestedContours,
   traceAlphaMaskContours,
@@ -716,7 +717,7 @@ export class MapPresetLabel3D implements MapPresetLabelTarget {
       (placement.worldHeight / this.blockHeightPx) *
       STYLE.titleFontPx *
       STYLE.letterReliefTitleFraction;
-    const letterDepth = Math.max(surfaceY, WATER_LEVEL) + relief - surfaceY;
+    const letterDepth = Math.max(surfaceY, getLiquidSurfaceLevel()) + relief - surfaceY;
 
     if (this.letterMesh === null) {
       // The extrusion is authored one unit deep and SCALED to the depth the

@@ -309,7 +309,13 @@ fn vegetation_bed_normal(x: f64, y: f64, out: &mut [f64; 3]) -> bool {
 /// Mirrors `isFarFromWater` in terrainSurface.ts.
 fn vegetation_far_from_water(x: f64, y: f64, buffer: f64) -> bool {
     let here = vegetation_bed_height(x, y);
-    if !here.is_finite() || here < TERRAIN_WATER_LEVEL {
+    if !here.is_finite() {
+        return false;
+    }
+    if !liquid_surface_enabled() {
+        return true;
+    }
+    if here < TERRAIN_WATER_LEVEL {
         return false;
     }
     if buffer <= 0.0 {
@@ -386,7 +392,7 @@ fn vegetation_waterline_elevation_band(range_fraction: f64) -> (f64, f64) {
 }
 
 fn vegetation_bed_in_waterline_band(bed: f64, range_fraction: f64) -> bool {
-    if !bed.is_finite() {
+    if !liquid_surface_enabled() || !bed.is_finite() {
         return false;
     }
     let (minimum, maximum) = vegetation_waterline_elevation_band(range_fraction);
@@ -553,7 +559,7 @@ pub fn vegetation_generate(
                     continue;
                 }
             } else {
-                if bed < TERRAIN_WATER_LEVEL || bed > rules.max_terrain_height {
+                if bed < liquid_surface_level() || bed > rules.max_terrain_height {
                     continue;
                 }
                 if !vegetation_far_from_water(x, y, rules.water_buffer) {

@@ -1178,9 +1178,9 @@ fn combat_targeting_underwater_fraction(pos_z: f64, radius_hitbox: f64, aabb_hal
     let fraction = if aabb_half_z.is_finite() && aabb_half_z > 0.0 {
         let full_height = 2.0 * aabb_half_z;
         let bottom_z = pos_z - aabb_half_z;
-        (TERRAIN_WATER_LEVEL - bottom_z).max(0.0).min(full_height) / full_height
+        (liquid_surface_level() - bottom_z).max(0.0).min(full_height) / full_height
     } else if radius_hitbox.is_finite() && radius_hitbox > 0.0 {
-        let submerged_height = (TERRAIN_WATER_LEVEL - (pos_z - radius_hitbox))
+        let submerged_height = (liquid_surface_level() - (pos_z - radius_hitbox))
             .max(0.0)
             .min(2.0 * radius_hitbox);
         if submerged_height <= 0.0 {
@@ -1191,7 +1191,7 @@ fn combat_targeting_underwater_fraction(pos_z: f64, radius_hitbox: f64, aabb_hal
             submerged_height * submerged_height * (3.0 * radius_hitbox - submerged_height)
                 / (4.0 * radius_hitbox * radius_hitbox * radius_hitbox)
         }
-    } else if pos_z <= TERRAIN_WATER_LEVEL {
+    } else if pos_z <= liquid_surface_level() {
         1.0
     } else {
         0.0
@@ -1207,7 +1207,7 @@ pub(crate) fn combat_targeting_target_underwater_fraction(
     aabb_half_z: f64,
 ) -> f32 {
     if family == CT_ENTITY_FAMILY_SHOT {
-        if pos_z <= TERRAIN_WATER_LEVEL {
+        if pos_z <= liquid_surface_level() {
             1.0
         } else {
             0.0

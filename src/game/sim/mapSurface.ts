@@ -17,9 +17,9 @@
 //      them is negative, nothing is excavated, the surface never descends past
 //      ground level, and the sea floor is never reached.
 //   2. The liquid filling those basins has to be water. LIQUID = LAVA pours
-//      molten rock into the exact same excavation. It is a surface a torpedo
-//      cannot swim through and a sonar cannot listen through, so for every
-//      question this module answers it is not water.
+//      molten rock into the exact same excavation; LIQUID = NONE exposes the
+//      basin floor. Neither is water a torpedo can swim through or sonar can
+//      listen through.
 //
 // THE LAND QUESTION is the mirror, minus the liquid — and under the current
 // generation pipeline its answer is ALWAYS yes. The four bars shape features
@@ -89,9 +89,10 @@ function liquidBelowDatumIsWater(
 /** THE land rule: the generation pipeline's baseline surface sits at the
  *  datum, so standing ground survives every authored bar combination — the
  *  bars carve features INTO ground level, they cannot flood the whole map.
- *  The liquid is irrelevant — lava fills basins, not plateaus. The unused
- *  magnitude parameters keep the seam: an authorable all-sea map would
- *  decide its answer from them, right here. */
+ *  The liquid is irrelevant — lava fills basins, while NONE exposes their
+ *  floors, and neither removes the plateaus. The unused magnitude parameters
+ *  keep the seam: an authorable all-sea map would decide its answer from
+ *  them, right here. */
 function baselineLeavesStandingGround(
   _centerMagnitude: number,
   _ringMagnitude: number,

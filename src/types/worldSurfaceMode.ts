@@ -1,6 +1,6 @@
 /** The two world-material settings (BATTLE bar WORLD group). Both are
  *  battle-level deterministic world state — they change extractor income and
- *  whether the liquid burns — so they live in WorldState and are included in
+ *  whether the liquid exists/burns — so they live in WorldState and are included in
  *  the canonical state hash, exactly like slopePathMode. */
 
 /** How much of the world is metal ore. One BATTLE-bar setting, four rungs.
@@ -20,13 +20,16 @@ export type MetalCoverage = 'none' | 'some' | 'more' | 'all';
 /** What fills the map below WATER_LEVEL.
  *  - `water` (default): the authored translucent sea.
  *  - `lava`: opaque molten rock that drains health very fast from anything
- *    touching its surface. */
-export type LiquidSurfaceMode = 'water' | 'lava';
+ *    touching its surface.
+ *  - `none`: no liquid plane or liquid medium; the authored basin terrain is
+ *    exposed as ordinary dry ground. */
+export type LiquidSurfaceMode = 'water' | 'lava' | 'none';
 
 export const DEFAULT_METAL_COVERAGE: MetalCoverage = 'more';
 export const DEFAULT_LIQUID_SURFACE_MODE: LiquidSurfaceMode = 'water';
 
 export const METAL_COVERAGES: readonly MetalCoverage[] = ['none', 'some', 'more', 'all'];
+export const LIQUID_SURFACE_MODES: readonly LiquidSurfaceMode[] = ['water', 'lava', 'none'];
 
 /** Bar buttons and the map sign both read these, so the four rungs are
  *  named the same everywhere the player sees them. */
@@ -35,6 +38,12 @@ export const METAL_COVERAGE_LABEL: Record<MetalCoverage, string> = {
   some: 'SOME',
   more: 'MORE',
   all: 'ALL',
+};
+
+export const LIQUID_SURFACE_MODE_LABEL: Record<LiquidSurfaceMode, string> = {
+  water: 'WATER',
+  lava: 'LAVA',
+  none: 'NONE',
 };
 
 export function isMetalCoverage(value: unknown): value is MetalCoverage {
@@ -48,5 +57,9 @@ export function metalCoverageIsWholeMap(value: MetalCoverage): boolean {
 }
 
 export function isLiquidSurfaceMode(value: unknown): value is LiquidSurfaceMode {
-  return value === 'water' || value === 'lava';
+  return LIQUID_SURFACE_MODES.includes(value as LiquidSurfaceMode);
+}
+
+export function liquidSurfaceModeHasLiquid(mode: LiquidSurfaceMode): boolean {
+  return mode !== 'none';
 }

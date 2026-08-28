@@ -606,7 +606,7 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.building_mark_gen.resize(n, 0);
     state.building_gen = 0;
     state.terrain_height.clear();
-    state.terrain_height.resize(n, TERRAIN_WATER_LEVEL as f32 + 1.0);
+    state.terrain_height.resize(n, liquid_surface_level() as f32 + 1.0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
     state.terrain_transition_normal_z.clear();
@@ -637,12 +637,12 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
 pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
     let t = terrain_grid();
     if !t.installed {
-        return (TERRAIN_WATER_LEVEL + 1.0, 1.0);
+        return (liquid_surface_level() + 1.0, 1.0);
     }
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
     let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
         Some(s) => s,
-        None => return (TERRAIN_WATER_LEVEL + 1.0, 1.0),
+        None => return (liquid_surface_level() + 1.0, 1.0),
     };
     let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h = wa * ah + wb * bh + wc * ch;
@@ -693,14 +693,15 @@ pub(crate) fn pathfinder_sample_cell_terrain(
         (mid_x, bottom),
         (right, bottom),
     ];
-    let mut has_water = center_h < TERRAIN_WATER_LEVEL;
-    let mut has_air = center_h >= TERRAIN_WATER_LEVEL;
+    let water_level = liquid_surface_level();
+    let mut has_water = center_h < water_level;
+    let mut has_air = center_h >= water_level;
     let mut min_normal_z = center_nz;
     let mut boundary_heights = [0.0f32; 8];
     for (sample_idx, (x, y)) in sample_points.into_iter().enumerate() {
         let (h, nz) = pathfinder_sample_terrain(x, y);
         boundary_heights[sample_idx] = h as f32;
-        if h < TERRAIN_WATER_LEVEL {
+        if h < water_level {
             has_water = true;
         } else {
             has_air = true;

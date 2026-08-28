@@ -44,6 +44,7 @@ import {
 import type { RtsScene3DCameraFramingSystem } from './RtsScene3DCameraFramingSystem';
 import type { GameConnection } from '@/types/game';
 import type { EntityId } from '@/types/sim';
+import { liquidSurfaceExists } from '../../sim/worldSurfaceState';
 
 type RtsScene3DRendererBootstrapOptions = {
   threeApp: ThreeApp;
@@ -259,7 +260,7 @@ export function bootstrapRtsScene3DRenderers(
   const windParticleFieldRenderer = new WindParticleField3D(threeApp.world, {
     mapWidth,
     mapHeight,
-    waterLevelWorld: WATER_LEVEL,
+    waterLevelWorld: liquidSurfaceExists() ? WATER_LEVEL : TILE_FLOOR_Y,
     highestTerrainWorld:
       getTerrainMeshMaximumHeight(mapWidth, mapHeight) ?? TERRAIN_MAX_RENDER_Y,
   });

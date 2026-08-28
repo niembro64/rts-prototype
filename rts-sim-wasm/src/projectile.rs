@@ -1353,7 +1353,7 @@ fn line_shot_distance_to_range_volume_inline(
         && uz > LINE_SHOT_RANGE_EPSILON
     {
         let top_z = if range_volume == LINE_SHOT_RANGE_VOLUME_TOP_WATER_AND_BOTTOM_UNBOUNDED {
-            TERRAIN_WATER_LEVEL
+            liquid_surface_level()
         } else {
             center_z + radius
         };

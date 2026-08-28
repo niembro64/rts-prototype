@@ -9,6 +9,7 @@ import {
   isWaterAt,
 } from '../sim/Terrain';
 import { WATER_LEVEL } from '../sim/terrain/terrainConfig';
+import { liquidSurfaceExists } from '../sim/worldSurfaceState';
 import { SupportSurfaceIndex } from '../sim/supportSurfaceIndex';
 import {
   createWorldSupportSurface,
@@ -153,7 +154,9 @@ export function getLocomotionSurfaceHeight(
 export function locomotionTerrainModeForSupportHeight(
   supportHeight: number,
 ): LocomotionTerrainMode {
-  return supportHeight < WATER_LEVEL ? 'terrainBed' : 'visibleSurface';
+  return liquidSurfaceExists() && supportHeight < WATER_LEVEL
+    ? 'terrainBed'
+    : 'visibleSurface';
 }
 
 function sampleLocomotionGroundContact(

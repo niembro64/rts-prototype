@@ -96,7 +96,7 @@ import {
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
 } from '../../../types/network';
-import { WATER_LEVEL } from '../Terrain';
+import { getLiquidSurfaceLevel } from '../worldSurfaceState';
 import {
   getShotLocomotionMaxTurnRate,
   getShotLocomotionMediumAtHeight,
@@ -1210,7 +1210,10 @@ export function fireTurrets(
               currentTick,
             },
           );
-          const beamSourceMedium = emissionMediumAtZ(firstEmission.position.z, WATER_LEVEL);
+          const beamSourceMedium = emissionMediumAtZ(
+            firstEmission.position.z,
+            getLiquidSurfaceLevel(),
+          );
           if (!constrainAimPointToEmissionRoutes(
             shot.mediumTrajectory,
             beamSourceMedium,
@@ -2000,7 +2003,7 @@ function _updateTravelingProjectilesJS(
     const shotConfig = proj.config.shot as ProjectileShot;
     const shotLocomotion = shotConfig.shotLocomotion;
     const emissionSourceMedium = proj.emissionSourceMedium ??
-      emissionMediumAtZ(position.z, WATER_LEVEL);
+      emissionMediumAtZ(position.z, getLiquidSurfaceLevel());
     if (proj.emissionSourceMedium === null) {
       proj.emissionSourceMedium = emissionSourceMedium;
     }
@@ -2008,7 +2011,7 @@ function _updateTravelingProjectilesJS(
     const mediumPhysics = getShotLocomotionMediumAtHeight(
       shotLocomotion,
       position.z,
-      WATER_LEVEL,
+      getLiquidSurfaceLevel(),
     );
     const mediumPhysicsActive = mediumPhysics.operational;
     let policyFlags = shotLocomotion.media.ground.mode === 'terrainFollowing'
@@ -2050,7 +2053,7 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileLinearDampingRate[index] = mediumPhysicsActive
       ? getProjectileMediumLinearDampingRate(mediumPhysics)
       : 0;
-    const airMedium = position.z > WATER_LEVEL;
+    const airMedium = position.z > getLiquidSurfaceLevel();
     _travelingProjectileMediumVelocityX[index] = airMedium && Number.isFinite(wind.x)
       ? wind.x
       : 0;
@@ -2252,7 +2255,7 @@ function _updateTravelingProjectilesJS(
     aNetZ += getProjectileMediumHoldCounterGravityAcceleration(
       shotConfig,
       mediumPhysics,
-      position.z <= WATER_LEVEL,
+      position.z <= getLiquidSurfaceLevel(),
       mediumPhysicsActive,
       guidedTargetCarriesGravity,
       projectileGravity,
