@@ -5,6 +5,7 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
+import { snapshotAtTick as snapshot } from '../network/snapshotContractFixtures';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ClientViewState } from '../network/ClientViewState';
 import {
@@ -66,29 +67,6 @@ function snapshotHasProjectileDespawn(
     return false;
   }
   return projectiles.despawns?.some((entry) => entry.id === id) === true;
-}
-
-function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): NetworkServerSnapshot {
-  return {
-    tick,
-    entities,
-    entityDeltaOnly: undefined,
-    projectileDeltaOnly: undefined,
-    minimapEntities: undefined,
-    economy: {},
-    resourceMovements: undefined,
-    sprayTargets: undefined,
-    audioEvents: undefined,
-    scanPulses: undefined,
-    projectiles: undefined,
-    gameState: undefined,
-    serverMeta: undefined,
-    terrain: undefined,
-    buildability: undefined,
-    visibilityFiltered: undefined,
-    visionPlayerMask: undefined,
-    removedEntityIds: undefined,
-  };
 }
 
 function createQuietSimulation(): Simulation {

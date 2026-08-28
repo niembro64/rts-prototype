@@ -1,9 +1,9 @@
 import { resetReusableSimulationStateForDeterministicReplay } from '../architecture/DeterministicReplayHarness';
+import { flatWaterWorldConfig } from '../server/flatWaterContractWorld';
 import { LOCKSTEP_FIXED_DT_MS } from '../architecture/LockstepFrameScheduler';
 import { ServerBootstrap } from '../server/ServerBootstrap';
 import { ServerSimulationCore } from '../server/ServerSimulationCore';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
-import type { GameServerConfig } from '../../types/game';
 import type { MoveCommand, WaypointTarget } from '../../types/commands';
 import { PATHFINDING_A_STAR_EXPANSIONS_PER_TICK } from './pathfindingTuning';
 import { PATH_REQUEST_NONE } from './SimulationPathPlanScheduler';
@@ -21,21 +21,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
  *  hierarchical search. (A terrain dome high enough to block the line also
  *  disconnects the two arcs, and an unreachable goal is a different, far
  *  more expensive search.) */
-const CONFIG: GameServerConfig = {
-  playerIds: [1 as PlayerId, 2 as PlayerId],
-  centerMagnitude: 0,
-  ringMagnitude: 0,
-  dividersMagnitude: 0,
-  perimeterMagnitude: -800,
-  terrainPrecedence: 'perimeter-precedence',
-  terrainDTerrain: 0,
-  plateauWallSlopeDegrees: 89,
-  metalDepositStep: 0,
-  terrainDetail: 1,
-  mapWidthLandCells: 21,
-  mapLengthLandCells: 21,
-  converterTax: 0,
-};
+const CONFIG = flatWaterWorldConfig(21);
 
 /** Enough units that their routes cannot all be searched inside one tick's
  *  work budget, so the only way the command tick stays cheap is by queueing. */

@@ -1,9 +1,9 @@
 import { resetReusableSimulationStateForDeterministicReplay } from '../architecture/DeterministicReplayHarness';
+import { flatWaterWorldConfig } from '../server/flatWaterContractWorld';
 import { LOCKSTEP_FIXED_DT_MS } from '../architecture/LockstepFrameScheduler';
 import { ServerBootstrap } from '../server/ServerBootstrap';
 import { ServerSimulationCore } from '../server/ServerSimulationCore';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
-import type { GameServerConfig } from '../../types/game';
 import type { StartBuildCommand } from '../../types/commands';
 import type { EntityId, PlayerId } from './types';
 
@@ -13,21 +13,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
 
 /** Flat land with a water perimeter — the trap below is built from building
  *  footprints, so terrain stays out of the picture. */
-const CONFIG: GameServerConfig = {
-  playerIds: [1 as PlayerId, 2 as PlayerId],
-  centerMagnitude: 0,
-  ringMagnitude: 0,
-  dividersMagnitude: 0,
-  perimeterMagnitude: -800,
-  terrainPrecedence: 'perimeter-precedence',
-  terrainDTerrain: 0,
-  plateauWallSlopeDegrees: 89,
-  metalDepositStep: 0,
-  terrainDetail: 1,
-  mapWidthLandCells: 21,
-  mapLengthLandCells: 21,
-  converterTax: 0,
-};
+const CONFIG = flatWaterWorldConfig(21);
 
 const POCKET_WALL_ENTITY_ID_BASE = 910_001;
 /** The full route must land within a small number of ticks: one search that

@@ -21,7 +21,7 @@ import {
   getFabricatorBuildingBlueprintId,
   getUnitBlueprint,
 } from './blueprints';
-import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
+import { installDemoWaterTerrainFixture } from './demoWaterTerrainContractFixture';
 import { spawnInitialBases, spawnMetalExtractorsOnDeposits } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import type { Entity, PlayerId } from './types';
@@ -32,15 +32,9 @@ import {
 import { WorldState } from './WorldState';
 import {
   getTerrainRuntimeConfig,
-  getTerrainTeamCount,
   isWaterAt,
-  setAuthoritativeTerrainTileMap,
-  setMetalDepositFlatZones,
   setTerrainRuntimeConfig,
-  setTerrainTeamCount,
 } from './Terrain';
-import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
-import { getMetalDepositFlatZones } from './terrain/terrainFlatZones';
 import {
   GROUND_BUILD_SQUARE_FLAG,
   TERRAIN_BUILDABLE_FLAG,
@@ -53,7 +47,6 @@ import {
 } from './pathfindingTraversal';
 import { registerPathfinderBuildingOccupancy } from './pathfinderTerrainCache';
 
-const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
 const CONTRACT_NEGATIVE_METAL_DEPOSIT_STEPS = [-100, -200, -400] as const;
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -1042,47 +1035,13 @@ function assertDemoTechLabsSpawnOnCurrentTerrain(preset: BattlePreset): void {
 }
 
 export function runDemoMetalExtractorSpawnContractTest(): void {
-  const preset = getModeDefaultPreset('demo');
-  const previousRuntimeConfig = getTerrainRuntimeConfig();
-  const previousTeamCount = getTerrainTeamCount();
-  const previousTerrain = getAuthoritativeTerrainTileMap();
-  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
-  const previousMetalDepositFlatZones = getMetalDepositFlatZones();
-  // Procedural test fixtures must not inherit the live/background battle's
-  // installed terrain mesh or divider count. An authoritative tile map wins
-  // over runtime magnitudes, which otherwise makes this contract depend on
-  // whichever map-oriented test happened to run immediately before it.
-  setAuthoritativeTerrainTileMap(null);
-  // Deposit pads are another process-wide layer of terrain truth. The lobby's
-  // long-running background battle may have installed pads for a different
-  // map by the time this late contract starts; those pads must not flatten the
-  // procedural water search used by these fixtures.
-  setMetalDepositFlatZones([], false);
-  setTerrainTeamCount(DEMO_CONFIG.allyTeamSeats.length);
-  setLiquidSurfaceMode(preset.liquidSurfaceMode);
-  setTerrainRuntimeConfig({
-    centerMagnitude: preset.centerMagnitude,
-    ringMagnitude: preset.ringMagnitude,
-    dividersMagnitude: preset.dividersMagnitude,
-    // The baseline assertions exercise the authored offshore layout even if
-    // the current demo preset has deliberately selected a dry perimeter.
-    perimeterMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
-    terrainPrecedence: preset.terrainPrecedence,
-    terrainDTerrain: preset.terrainDTerrain,
-    plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
-    metalDepositStep: preset.metalDepositStep,
-    terrainDetail: preset.terrainDetail,
-  });
+  const { preset, restore } = installDemoWaterTerrainFixture();
   try {
     runDemoMetalExtractorSpawnContractTestForPreset(preset);
     assertCompactAuthoredRosterFactoryCoverage();
     assertDemoTechLabsSpawnForEverySeat(preset);
     assertConstrainedFactoryPlacementIsNonFatal();
   } finally {
-    setMetalDepositFlatZones(previousMetalDepositFlatZones, false);
-    setTerrainRuntimeConfig(previousRuntimeConfig);
-    setTerrainTeamCount(previousTeamCount);
-    setAuthoritativeTerrainTileMap(previousTerrain);
-    setLiquidSurfaceMode(previousLiquidSurfaceMode);
+    restore();
   }
 }

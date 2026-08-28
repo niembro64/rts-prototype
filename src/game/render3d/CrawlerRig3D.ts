@@ -319,38 +319,23 @@ export type CrawlerMesh = {
  *  intentionally aren't here; those are bound to the freshly-built
  *  LegInstance and will be re-issued by buildCrawler when the rebuilt
  *  mesh allocates new pool slots. */
-export type LegStateSnapshot = ReadonlyArray<{
-  worldX: number; worldY: number; worldZ: number;
-  startWorldX: number; startWorldY: number; startWorldZ: number;
-  targetWorldX: number; targetWorldY: number; targetWorldZ: number;
-  contactState: LegContactState;
-  footQuaternionX: number;
-  footQuaternionY: number;
-  footQuaternionZ: number;
-  footQuaternionW: number;
-  footStepStartQuaternionX: number;
-  footStepStartQuaternionY: number;
-  footStepStartQuaternionZ: number;
-  footStepStartQuaternionW: number;
-  footTargetQuaternionX: number;
-  footTargetQuaternionY: number;
-  footTargetQuaternionZ: number;
-  footTargetQuaternionW: number;
-  footContactNormalX: number;
-  footContactNormalY: number;
-  footContactNormalZ: number;
-  footTargetNormalX: number;
-  footTargetNormalY: number;
-  footTargetNormalZ: number;
-  footContactOrientationCaptured: boolean;
-  lerpProgress: number;
-  lerpDuration: number;
-  initialized: boolean;
-  phaseShift01: 0 | 1;
-  lastSnapRayOriginX: number;
-  lastSnapRayOriginZ: number;
-  snapRayOriginInitialized: boolean;
-}>;
+export type LegStateSnapshot = ReadonlyArray<Pick<LegInstance,
+  | 'worldX' | 'worldY' | 'worldZ'
+  | 'startWorldX' | 'startWorldY' | 'startWorldZ'
+  | 'targetWorldX' | 'targetWorldY' | 'targetWorldZ'
+  | 'contactState'
+  | 'footQuaternionX' | 'footQuaternionY' | 'footQuaternionZ' | 'footQuaternionW'
+  | 'footStepStartQuaternionX' | 'footStepStartQuaternionY'
+  | 'footStepStartQuaternionZ' | 'footStepStartQuaternionW'
+  | 'footTargetQuaternionX' | 'footTargetQuaternionY'
+  | 'footTargetQuaternionZ' | 'footTargetQuaternionW'
+  | 'footContactNormalX' | 'footContactNormalY' | 'footContactNormalZ'
+  | 'footTargetNormalX' | 'footTargetNormalY' | 'footTargetNormalZ'
+  | 'footContactOrientationCaptured'
+  | 'lerpProgress' | 'lerpDuration' | 'initialized'
+  | 'phaseShift01'
+  | 'lastSnapRayOriginX' | 'lastSnapRayOriginZ' | 'snapRayOriginInitialized'
+>>;
 
 /** Capture per-leg state from a legged locomotion mesh into a plain
  *  array of POJOs the caller can stash across a tear-down/rebuild.

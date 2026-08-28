@@ -1,11 +1,11 @@
 import { resetReusableSimulationStateForDeterministicReplay } from '../architecture/DeterministicReplayHarness';
+import { flatWaterWorldConfig } from '../server/flatWaterContractWorld';
 import { LOCKSTEP_FIXED_DT_MS } from '../architecture/LockstepFrameScheduler';
 import { ServerBootstrap } from '../server/ServerBootstrap';
 import { ServerSimulationCore } from '../server/ServerSimulationCore';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import { getSimWasm } from '../sim-wasm/init';
 import { getCombatTargetingStateViews } from './combat/targetingInputStamping';
-import type { GameServerConfig } from '../../types/game';
 import { TARGETING_ACQUISITION_SCANS_PER_TICK } from '../../config';
 import type { Entity, EntityId, PlayerId } from './types';
 
@@ -13,21 +13,7 @@ function assertContract(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(`[targeting acquisition budget contract] ${message}`);
 }
 
-const CONFIG: GameServerConfig = {
-  playerIds: [1 as PlayerId, 2 as PlayerId],
-  centerMagnitude: 0,
-  ringMagnitude: 0,
-  dividersMagnitude: 0,
-  perimeterMagnitude: -800,
-  terrainPrecedence: 'perimeter-precedence',
-  terrainDTerrain: 0,
-  plateauWallSlopeDegrees: 89,
-  metalDepositStep: 0,
-  terrainDetail: 1,
-  mapWidthLandCells: 13,
-  mapLengthLandCells: 13,
-  converterTax: 0,
-};
+const CONFIG = flatWaterWorldConfig(13);
 
 /** Two armed lines facing each other inside weapon range (the light gun
  *  acquires at 190 wu): 32 columns by 5 rows a side, rows 20 wu apart with

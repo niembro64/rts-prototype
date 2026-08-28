@@ -561,26 +561,9 @@ export class SnapshotBuffer {
       }
     }
 
-    let patched = false;
-    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-      if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
-      target.pos.x = deltaValues[deltaBase + 1];
-      target.pos.y = deltaValues[deltaBase + 2];
-      target.pos.z = deltaValues[deltaBase + 3];
-      if (pendingValues !== undefined) {
-        pendingValues[pendingBase + 1] = deltaValues[deltaBase + 1];
-        pendingValues[pendingBase + 2] = deltaValues[deltaBase + 2];
-        pendingValues[pendingBase + 3] = deltaValues[deltaBase + 3];
-      }
-      patched = true;
-    }
-    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-      target.rotation = deltaValues[deltaBase + 4];
-      if (pendingValues !== undefined) {
-        pendingValues[pendingBase + 4] = deltaValues[deltaBase + 4];
-      }
-      patched = true;
-    }
+    let patched = this.patchTransformFromTypedDelta(
+      target, deltaValues, deltaBase, changedFields, pendingValues, pendingBase,
+    );
 
     const dstUnit = target.unit;
     if (dstUnit === null) return patched;
@@ -676,6 +659,41 @@ export class SnapshotBuffer {
     return patched;
   }
 
+  /** POS/ROT merge head shared by the typed unit and building delta paths:
+   *  both wire row layouts carry position in slots 1-3 and rotation in
+   *  slot 4, and a matched pending wire row is patched in place so a later
+   *  re-encode of the pending snapshot still agrees with the merge. */
+  private patchTransformFromTypedDelta(
+    target: NetworkServerSnapshotEntity,
+    deltaValues: Float64Array,
+    deltaBase: number,
+    changedFields: number,
+    pendingValues: Float64Array | undefined,
+    pendingBase: number,
+  ): boolean {
+    let patched = false;
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
+      target.pos.x = deltaValues[deltaBase + 1];
+      target.pos.y = deltaValues[deltaBase + 2];
+      target.pos.z = deltaValues[deltaBase + 3];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 1] = deltaValues[deltaBase + 1];
+        pendingValues[pendingBase + 2] = deltaValues[deltaBase + 2];
+        pendingValues[pendingBase + 3] = deltaValues[deltaBase + 3];
+      }
+      patched = true;
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      target.rotation = deltaValues[deltaBase + 4];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 4] = deltaValues[deltaBase + 4];
+      }
+      patched = true;
+    }
+    return patched;
+  }
+
   private patchPendingBuildingFromTypedDelta(
     deltaSource: EntitySnapshotWireSource,
     deltaIndex: number,
@@ -711,26 +729,9 @@ export class SnapshotBuffer {
       }
     }
 
-    let patched = false;
-    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-      if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
-      target.pos.x = deltaValues[deltaBase + 1];
-      target.pos.y = deltaValues[deltaBase + 2];
-      target.pos.z = deltaValues[deltaBase + 3];
-      if (pendingValues !== undefined) {
-        pendingValues[pendingBase + 1] = deltaValues[deltaBase + 1];
-        pendingValues[pendingBase + 2] = deltaValues[deltaBase + 2];
-        pendingValues[pendingBase + 3] = deltaValues[deltaBase + 3];
-      }
-      patched = true;
-    }
-    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-      target.rotation = deltaValues[deltaBase + 4];
-      if (pendingValues !== undefined) {
-        pendingValues[pendingBase + 4] = deltaValues[deltaBase + 4];
-      }
-      patched = true;
-    }
+    let patched = this.patchTransformFromTypedDelta(
+      target, deltaValues, deltaBase, changedFields, pendingValues, pendingBase,
+    );
 
     const dstBuilding = target.building;
     if (dstBuilding === null) return patched;

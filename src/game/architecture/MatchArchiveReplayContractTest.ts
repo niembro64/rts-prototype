@@ -14,7 +14,7 @@
  * archive rather than through a hand-written list of frames.
  */
 
-import type { GameServerConfig } from '@/types/game';
+import { flatWaterWorldConfig } from '../server/flatWaterContractWorld';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import { ServerBootstrap } from '../server/ServerBootstrap';
@@ -48,21 +48,7 @@ export function runMatchArchiveReplayContractTest(): void {
 }
 
 function runMatchArchiveReplay(): void {
-  const config: GameServerConfig = {
-    playerIds: [1 as PlayerId, 2 as PlayerId],
-    centerMagnitude: 0,
-    ringMagnitude: 0,
-    dividersMagnitude: 0,
-    perimeterMagnitude: -800,
-    terrainPrecedence: 'perimeter-precedence',
-    terrainDTerrain: 0,
-    plateauWallSlopeDegrees: 89,
-    metalDepositStep: 0,
-    terrainDetail: 1,
-    mapWidthLandCells: 9,
-    mapLengthLandCells: 9,
-    converterTax: 0,
-  };
+  const config = flatWaterWorldConfig(9);
 
   const archive = new MatchCommandArchive();
   let coordinatorHash = '';
