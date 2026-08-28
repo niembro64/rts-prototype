@@ -50,12 +50,16 @@ export function runPathfindingTraversalContractTest(): void {
     applyLiquidHazardPathPolicy(landWithTokenSwim, 'water', 0) === landWithTokenSwim,
     'without water damage the physical recovery domain is kept',
   );
-  const lava = applyLiquidHazardPathPolicy(amphibious, 'lava', 0);
+  const lava = applyLiquidHazardPathPolicy(amphibious, 'lava', 0, 1);
   assertContract(lava !== null, 'lava policy preserves a non-null profile');
   assertContract(
     lava.navigation.waypoint.allowInWater === false &&
       lava.navigation.move.allowInWater === false,
-    'lava is forbidden for both intentional waypoints and physical recovery routes',
+    'damaging lava is forbidden for both intentional waypoints and physical recovery routes',
+  );
+  assertContract(
+    applyLiquidHazardPathPolicy(amphibious, 'lava', 0, 0) === amphibious,
+    'an explicitly heat-proof amphibious body retains lava waypoints and movement',
   );
   assertContract(
     amphibious.navigation.waypoint.allowInWater && amphibious.navigation.move.allowInWater,

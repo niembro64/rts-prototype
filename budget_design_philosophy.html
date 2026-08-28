@@ -1682,8 +1682,10 @@
         remain authoritative. A stale plan may continue only while its remaining suffix validates
         against the current navigation layers; otherwise the controller holds. Physical capability
         and hazard policy are separate: ordinary water may use the unit's authored wet force
-        envelope, while lava removes the water domain from both MOVE and WAYPOINT routing even for a
-        body that could mechanically swim through it. <code>LIQUID: NONE</code> removes the medium
+        envelope, while damaging lava removes the water domain from both MOVE and WAYPOINT routing
+        even for a body that could mechanically swim through it. An explicitly heat-proof chassis
+        keeps its authored wet traversal in lava; the Rex titan is the current exception.
+        <code>LIQUID: NONE</code> removes the medium
         itself: the authored basin floor becomes ordinary ground for movement, placement, sensing,
         and combat. Air traversal still overflies any liquid that is present.
       </p>
@@ -1873,7 +1875,11 @@
         waypoint domain, but may not voluntarily leave the waypoint domain for recovery-only
         cells. Survival policy is separate again: every unit authors numeric
         <code>waterDamagePerSecond</code>, with zero for water-safe units, and damage samples only
-        whether the authoritative body origin is strictly below the water plane.
+        whether the authoritative body origin is strictly below the water plane. Lava damage has a
+        fixed floor and scales with the target&rsquo;s maximum health, so ordinary units and buildings
+        cannot outgrow the hazard and water-vulnerable units die faster in lava than they drown.
+        Unit locomotion may author <code>lavaDamageMultiplier</code>; omitted resolves to one, while
+        zero is an explicit heat-proof exception that also preserves physically valid lava routing.
       </p>
       <p>
         Surface following is a source-explicit powered support force, not a height clamp. Air

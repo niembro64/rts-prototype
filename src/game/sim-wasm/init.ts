@@ -1880,6 +1880,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runSimulationPathPlanSchedulerContractTest();
         const { runPathfindingTraversalContractTest } = await import('../sim/pathfindingTraversalContractTest');
         runPathfindingTraversalContractTest();
+        const { runLavaSurfaceDamageContractTest } = await import('../sim/lavaSurfaceDamageContractTest');
+        runLavaSurfaceDamageContractTest();
         const { runLocalAvoidanceContractTest } = await import('../sim/localAvoidanceContractTest');
         runLocalAvoidanceContractTest();
         const { runPathPlanSafetyContractTest } = await import('../sim/pathPlanSafetyContractTest');
