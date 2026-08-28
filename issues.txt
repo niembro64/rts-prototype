@@ -1,4 +1,0 @@
-1) lava should definitely kill most units. And most units should die faster than water kills units. Maybe titans can survie and walk in lava.
-
-
-2) lava needs an overhaul. it should still move with some randomness in the direction 

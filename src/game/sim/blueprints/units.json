@@ -1788,7 +1788,8 @@
       },
       "environmentalHazards": {
         "waterDamagePerSecond": 0,
-        "landDamagePerSecond": 0
+        "landDamagePerSecond": 0,
+        "lavaDamageMultiplier": 0
       }
     },
     "base": {

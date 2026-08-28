@@ -1,7 +1,8 @@
 // Small deterministic, seamless textures for the horizontal liquid surfaces.
-// Water gets quiet bent flow lines. Lava gets two scales of cellular plates:
-// the renderer samples each field at three wind-advected scales so hot
-// fissures open and close without making the whole surface one sliding decal.
+// Water gets quiet bent flow lines. Lava gets an organic periodic flow field
+// plus broad and fine cellular fracture masks. The renderer samples those
+// channels at independently wind-advected scales to move cooling rafts over
+// the molten field without turning the whole surface into one sliding decal.
 
 import * as THREE from 'three';
 
@@ -34,6 +35,34 @@ function hashCell(x: number, y: number, seed: number): number {
 
 function wrappedCell(value: number, cells: number): number {
   return ((value % cells) + cells) % cells;
+}
+
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
+}
+
+/** Tileable smooth value noise. Integer lattice coordinates are wrapped
+ * before hashing, so both the value and its interpolation slope meet cleanly
+ * across a repeating texture boundary. */
+function samplePeriodicValueNoise(
+  u: number,
+  v: number,
+  cells: number,
+  seed: number,
+): number {
+  const px = u * cells;
+  const py = v * cells;
+  const x0 = Math.floor(px);
+  const y0 = Math.floor(py);
+  const tx = px - x0;
+  const ty = py - y0;
+  const sx = tx * tx * (3 - 2 * tx);
+  const sy = ty * ty * (3 - 2 * ty);
+  const n00 = hashCell(wrappedCell(x0, cells), wrappedCell(y0, cells), seed);
+  const n10 = hashCell(wrappedCell(x0 + 1, cells), wrappedCell(y0, cells), seed);
+  const n01 = hashCell(wrappedCell(x0, cells), wrappedCell(y0 + 1, cells), seed);
+  const n11 = hashCell(wrappedCell(x0 + 1, cells), wrappedCell(y0 + 1, cells), seed);
+  return lerp(lerp(n00, n10, sx), lerp(n01, n11, sx), sy);
 }
 
 type CellularSample = Readonly<{
@@ -123,21 +152,44 @@ export function createLiquidSurfaceTexture3D(
         data[offset + 1] = byte(shade * 0.995);
         data[offset + 2] = byte(shade);
       } else {
-        const broad = sampleCellular(normalizedX, normalizedY, 7, 13);
-        const fine = sampleCellular(normalizedX, normalizedY, 17, 71);
-        const fissure = clampUnit(
-          Math.max(
-            Math.pow(broad.edge, 1.7),
-            Math.pow(fine.edge, 2.5) * 0.58,
-          ) * (0.7 + spec.contrast * 0.55),
+        // Warp both crack lattices through a very broad periodic flow field.
+        // Straight Voronoi borders read like a stained-glass decal; warped
+        // borders form stretched cooling rafts and branching molten channels.
+        const warpX = samplePeriodicValueNoise(normalizedX, normalizedY, 4, 29) - 0.5;
+        const warpY = samplePeriodicValueNoise(
+          normalizedX + 0.371,
+          normalizedY + 0.619,
+          4,
+          83,
+        ) - 0.5;
+        const warpedX = normalizedX + warpX * 0.13;
+        const warpedY = normalizedY + warpY * 0.13;
+        const broad = sampleCellular(warpedX, warpedY, 6, 13);
+        const fine = sampleCellular(
+          warpedX - warpY * 0.07,
+          warpedY + warpX * 0.07,
+          15,
+          71,
         );
-        const hotCore = Math.pow(fissure, 2.25);
-        // R/G are fissure and white-hot-core masks consumed by the lava
-        // shader. B is a stable per-plate phase/warp value. With the shader
-        // absent this still degrades to recognisable dark crust and red seams.
-        data[offset] = byte(fissure);
-        data[offset + 1] = byte(hotCore);
-        data[offset + 2] = byte(0.12 + broad.plate * 0.38 + fine.plate * 0.12);
+        const broadFracture = clampUnit(
+          Math.pow(broad.edge, 2.4) * (0.72 + spec.contrast * 0.48),
+        );
+        const fineFracture = clampUnit(
+          Math.pow(fine.edge, 3.1)
+            * (0.42 + spec.contrast * 0.38)
+            * (0.72 + broad.plate * 0.28),
+        );
+        const thermalField = clampUnit(
+          samplePeriodicValueNoise(warpedX, warpedY, 3, 127) * 0.48
+            + samplePeriodicValueNoise(warpedX, warpedY, 7, 191) * 0.31
+            + samplePeriodicValueNoise(warpedX, warpedY, 13, 251) * 0.14
+            + broad.plate * 0.07,
+        );
+        // R = major molten-rift topology, G = fine cooling fractures,
+        // B = smooth thermal/domain-warp field and per-region animation phase.
+        data[offset] = byte(broadFracture);
+        data[offset + 1] = byte(fineFracture);
+        data[offset + 2] = byte(thermalField);
       }
       data[offset + 3] = 255;
     }

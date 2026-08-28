@@ -83,7 +83,9 @@ BACKDROP_PALETTE_CONFIG = {
     "skyMid": COLORS["sky"]["midColor"],
     "skyHorizon": COLORS["sky"]["horizonColor"],
     "water": COLORS["water"]["colorHex"],
-    "lava": COLORS["water"]["lava"]["colorHex"],
+    # The panorama has no live crust shader; use the molten palette entry as
+    # its distant lava glow rather than the nearly black side-wall colour.
+    "lava": COLORS["water"]["lava"]["palette"]["moltenColorHex"],
     "outOfBounds": COLORS["map"]["outOfBounds"]["colorHex"],
     "cameraClear": COLORS["map"]["cameraClear"]["colorHex"],
     "inBounds": COLORS["map"]["inBounds"]["colorHex"],

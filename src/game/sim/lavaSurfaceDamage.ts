@@ -5,8 +5,11 @@
 // so it stays bit-identical across peers and routes deaths through the shared
 // pendingDeathCheck cleanup the same way a self-destruct does.
 
-import terrainConfig from './terrain/terrainConfig.json';
-import { WATER_LEVEL } from './terrain/terrainConfig';
+import {
+  LAVA_MAX_HEALTH_FRACTION_PER_SECOND,
+  LAVA_MINIMUM_DAMAGE_PER_SECOND,
+  WATER_LEVEL,
+} from './terrain/terrainConfig';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 import type { Entity } from './types';
 import type { WorldState } from './WorldState';
@@ -19,12 +22,27 @@ const submergedBuildingCache = new WeakMap<WorldState, {
   list: Entity[];
 }>();
 
+/** The fixed floor makes lava decisive against tiny objects while the
+ * max-health term prevents heavy units and structures from tanking it longer
+ * than ordinary land units drown. A zero multiplier is explicit immunity. */
+export function lavaDamagePerSecondFor(
+  maxHp: number,
+  lavaDamageMultiplier: number,
+): number {
+  if (!Number.isFinite(maxHp) || maxHp <= 0) return 0;
+  if (!Number.isFinite(lavaDamageMultiplier) || lavaDamageMultiplier <= 0) return 0;
+  return Math.max(
+    LAVA_MINIMUM_DAMAGE_PER_SECOND,
+    maxHp * LAVA_MAX_HEALTH_FRACTION_PER_SECOND,
+  ) * lavaDamageMultiplier;
+}
+
 /** Drain health from every entity whose body reaches the lava surface.
  *  A no-op unless the battle is running with LIQUID = LAVA. */
 export function applyLavaSurfaceDamage(world: WorldState, dtMs: number): void {
   if (world.liquidSurfaceMode !== 'lava') return;
-  const damage = terrainConfig.water.lavaDamagePerSecond * (dtMs / 1000);
-  if (damage <= 0) return;
+  const dtSeconds = dtMs / 1000;
+  if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return;
 
   // Units keep their ground-contact point as the touch test, so an aircraft
   // only burns once it descends into the surface.
@@ -34,6 +52,11 @@ export function applyLavaSurfaceDamage(world: WorldState, dtMs: number): void {
     const unit = entity.unit;
     if (unit === null || unit.hp <= 0) continue;
     if (entity.transform.z > WATER_LEVEL) continue;
+    const damage = lavaDamagePerSecondFor(
+      unit.maxHp,
+      unit.locomotion?.environmentalHazards.lavaDamageMultiplier ?? 1,
+    ) * dtSeconds;
+    if (damage <= 0) continue;
     unit.hp = Math.max(0, unit.hp - damage);
     world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
   }
@@ -61,6 +84,7 @@ export function applyLavaSurfaceDamage(world: WorldState, dtMs: number): void {
     const entity = submerged[i];
     const building = entity.building;
     if (building === null || building.hp <= 0) continue;
+    const damage = lavaDamagePerSecondFor(building.maxHp, 1) * dtSeconds;
     building.hp = Math.max(0, building.hp - damage);
     world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
   }

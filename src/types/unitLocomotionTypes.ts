@@ -99,6 +99,10 @@ export type UnitLocomotion = {
      * above the water plane (origin minus radius at or above it) — a hull
      * resting on dry ground. Zero makes the unit land-safe. */
     landDamagePerSecond: number;
+    /** Multiplier on the match-wide health-scaled lava damage. Zero is an
+     * explicit heat-proof chassis and keeps its authored wet traversal in a
+     * lava match; omitted authoring resolves to one at blueprint load. */
+    lavaDamageMultiplier: number;
   };
   actuator: {
     /** Axis through which the locomotion actuator can apply horizontal force.

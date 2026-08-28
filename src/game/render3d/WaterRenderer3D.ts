@@ -61,11 +61,10 @@ import { createLiquidSurfaceTexture3D } from './LiquidSurfaceTexture3D';
 // a few ULPs suffice at every distance.
 const WATER_DEPTH_OFFSET_FACTOR = 0;
 const WATER_DEPTH_OFFSET_UNITS = 4;
-/** The lava surface colour in the renderer's linear working space, scaled past
- *  the display range so tone mapping treats it as an emitter. */
-function lavaSurfaceColor(): THREE.Color {
-  return new THREE.Color(LAVA_RENDER_CONFIG.color)
-    .multiplyScalar(Math.max(0, LAVA_RENDER_CONFIG.emissiveScale));
+/** Curtains do not carry the horizontal flow shader, so they use the palette's
+ * deep side-wall colour directly. */
+function lavaCurtainColor(): THREE.Color {
+  return new THREE.Color(LAVA_RENDER_CONFIG.curtainColor);
 }
 
 const WATER_TRIANGLE_DEBUG_COLOR = 0xfff17a;
@@ -81,6 +80,12 @@ uniform vec2 uLiquidFlow0;
 uniform vec2 uLiquidFlow1;
 uniform vec2 uLiquidFlow2;
 uniform vec3 uLiquidLayerScales;
+uniform vec3 uLavaColdCrustColor;
+uniform vec3 uLavaWarmCrustColor;
+uniform vec3 uLavaMoltenColor;
+uniform vec3 uLavaHotColor;
+uniform vec3 uLavaCoreColor;
+uniform float uLavaEmissiveScale;
 `;
 
 const WATER_MAP_FRAGMENT = `
@@ -102,51 +107,97 @@ const WATER_MAP_FRAGMENT = `
 #endif
 `;
 
-/** Lava is not a translated decal. Three wind-advected scales of the seamless
- * crust field warp and expose hot fissures while the larger plates remain
- * dark. MeshBasicMaterial still supplies the scene's ordinary
- * fog/tone-mapping path; this only replaces its stock map multiply. */
+/** Viscous lava is a moving material rather than an orange decal. A broad
+ * sample bends the domain; two independently advected samples slide cooling
+ * rafts across major and hairline rifts; localized thermal maxima breathe into
+ * hot upwellings. MeshBasicMaterial still supplies ordinary fog and tone
+ * mapping, while this block owns the lava's unlit/emissive colour. */
 const LAVA_MAP_FRAGMENT = `
 #ifdef USE_MAP
-  vec3 lavaPrimary = texture2D(
+  vec2 lavaMacroUv = vMapUv * uLiquidLayerScales.x - uLiquidFlow0;
+  vec3 lavaMacro = texture2D(map, lavaMacroUv).rgb;
+  vec3 lavaWarpProbe = texture2D(
     map,
-    vMapUv * uLiquidLayerScales.x - uLiquidFlow0
+    lavaMacroUv + vec2(0.371, 0.619)
   ).rgb;
-  vec2 lavaWarp = (lavaPrimary.gb - vec2(0.5)) * 0.075;
-  vec3 lavaSecondary = texture2D(
+  vec2 lavaWarp = (vec2(lavaMacro.b, lavaWarpProbe.b) - vec2(0.5)) * 0.19;
+
+  vec3 lavaRaft = texture2D(
     map,
     vMapUv * uLiquidLayerScales.y - uLiquidFlow1 + lavaWarp
   ).rgb;
-  vec3 lavaTertiary = texture2D(
+  vec3 lavaDetail = texture2D(
     map,
-    vMapUv * uLiquidLayerScales.z - uLiquidFlow2 - lavaWarp * 0.45
+    vMapUv * uLiquidLayerScales.z - uLiquidFlow2 - lavaWarp * 0.42
   ).rgb;
-  float lavaFissure = max(
-    lavaPrimary.r,
-    max(lavaSecondary.r * 0.78, lavaTertiary.r * 0.62)
+
+  float lavaRiftTopology = lavaRaft.r;
+  float lavaHairline = max(lavaRaft.g, lavaDetail.g * 0.82);
+  float lavaThermal = dot(
+    vec3(lavaMacro.b, lavaRaft.b, lavaDetail.b),
+    vec3(0.24, 0.48, 0.28)
   );
-  float lavaCore = max(lavaPrimary.g, lavaSecondary.g * 0.86);
-  float lavaPulse = 0.88 + 0.12 * sin(
-    uLiquidTime * 1.15 + lavaTertiary.b * 6.2831853
+  // Thermal gating closes most of the cellular borders into dark seams. Only
+  // connected hot regions open into visible melt, avoiding a uniform glowing
+  // stained-glass web across the whole lake.
+  float lavaOpenGate = smoothstep(0.39, 0.72, lavaThermal);
+  float lavaOpenRift = lavaRiftTopology * (0.28 + lavaOpenGate * 0.72);
+  float lavaMelt = smoothstep(0.42, 0.94, lavaOpenRift);
+  float lavaHot = smoothstep(0.76, 0.995, lavaOpenRift)
+    * (0.74 + lavaThermal * 0.26);
+  float lavaCore = smoothstep(0.975, 1.0, lavaOpenRift);
+
+  // Broad thermal maxima become sparse upwellings. Their per-region phase is
+  // sourced from the drifting detail field, so the whole lake never pulses as
+  // one synchronized light.
+  float lavaUpwellPulse = 0.5 + 0.5 * sin(
+    uLiquidTime * 0.72 + lavaDetail.b * 12.5663706 + lavaMacro.b * 4.7123890
   );
-  vec3 lavaMultiplier = mix(
-    vec3(0.055, 0.032, 0.022),
-    vec3(0.92, 0.44, 0.08),
-    smoothstep(0.08, 0.72, lavaFissure)
+  float lavaUpwell = smoothstep(
+    0.69,
+    0.88,
+    lavaThermal + lavaUpwellPulse * 0.11
   );
-  lavaMultiplier = mix(
-    lavaMultiplier,
-    vec3(1.08, 1.72, 0.48),
-    smoothstep(0.58, 0.98, lavaCore) * lavaPulse
+  float lavaUpwellChannel = lavaUpwell
+    * smoothstep(0.16, 0.72, lavaRiftTopology);
+  lavaMelt = max(lavaMelt, lavaUpwellChannel * 0.82);
+  lavaHot = max(lavaHot, lavaUpwellChannel * 0.74);
+  lavaCore = max(
+    lavaCore,
+    lavaUpwellChannel * lavaUpwellPulse * 0.28
   );
-  diffuseColor.rgb *= lavaMultiplier;
+
+  // A warm bevel around each opening gives the dark crust thickness. The
+  // interior remains nearly black; only exposed melt receives emissive gain.
+  float lavaCrustBevel = smoothstep(0.045, 0.34, lavaRiftTopology)
+    * (1.0 - smoothstep(0.47, 0.83, lavaRiftTopology));
+  float lavaHairGlow = smoothstep(0.62, 0.98, lavaHairline) * 0.14;
+  float lavaRaftWarmth = clamp(
+    lavaThermal * 0.42 + lavaCrustBevel * 0.68 + lavaHairline * 0.08,
+    0.0,
+    1.0
+  );
+  vec3 lavaColor = mix(
+    uLavaColdCrustColor,
+    uLavaWarmCrustColor,
+    lavaRaftWarmth
+  );
+  lavaColor = mix(lavaColor, uLavaMoltenColor, max(lavaMelt, lavaHairGlow));
+  lavaColor = mix(lavaColor, uLavaHotColor, lavaHot);
+  lavaColor = mix(lavaColor, uLavaCoreColor, lavaCore);
+  float lavaEmission = mix(
+    1.0,
+    uLavaEmissiveScale,
+    smoothstep(0.18, 0.92, max(lavaMelt, lavaHot))
+  );
+  diffuseColor.rgb *= lavaColor * lavaEmission;
 #endif
 `;
 
-const LIQUID_FLOW_LAYER_PHASE_RADIANS = [
-  0,
-  (Math.PI * 2) / 3,
-  (Math.PI * 4) / 3,
+const LIQUID_FLOW_LAYER_RANDOM_SEEDS = [
+  0x19d3,
+  0x4a7f,
+  0x83b1,
 ] as const;
 
 type LiquidFlowWind = Readonly<{ x: number; y: number }>;
@@ -156,6 +207,32 @@ function wrapRepeat(value: number): number {
   // Preserve the sign of the remainder so the stored displacement still
   // communicates which side of the wind bearing a layer is wiggling toward.
   return value % 1;
+}
+
+/** Stable integer hash mapped to [-1, 1]. This is render-only motion state:
+ * it supplies successive heading targets without touching simulation RNG. */
+function liquidFlowRandomSigned(segment: number, seed: number): number {
+  let value = (Math.trunc(segment) ^ seed) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x7feb352d);
+  value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
+  value = (value ^ (value >>> 16)) >>> 0;
+  return (value / 0xffff_ffff) * 2 - 1;
+}
+
+/** Smoothly interpolate between deterministic pseudo-random heading targets.
+ * The authored prime periods keep the three layers from changing together. */
+function liquidFlowHeadingWiggle(
+  timeSeconds: number,
+  periodSeconds: number,
+  seed: number,
+): number {
+  const position = timeSeconds / periodSeconds;
+  const segment = Math.floor(position);
+  const rawT = position - segment;
+  const smoothT = rawT * rawT * (3 - 2 * rawT);
+  const from = liquidFlowRandomSigned(segment, seed);
+  const to = liquidFlowRandomSigned(segment + 1, seed);
+  return from + (to - from) * smoothT;
 }
 
 // The horizontal surface is a rectilinear grid, not one giant quad. Depth
@@ -355,6 +432,7 @@ export class WaterRenderer3D {
   private liquidTexture: THREE.DataTexture;
   private liquidTextureTileWorldSize: number;
   private liquidFlowConfig: typeof WATER_RENDER_CONFIG.texture;
+  private liquidFlowElapsedSeconds = 0;
   private readonly liquidTimeUniform = { value: 0 };
   private readonly liquidFlowOffsetUniforms = [
     { value: new THREE.Vector2() },
@@ -362,6 +440,24 @@ export class WaterRenderer3D {
     { value: new THREE.Vector2() },
   ] as const;
   private readonly liquidLayerScalesUniform = { value: new THREE.Vector3() };
+  private readonly lavaColdCrustColorUniform = {
+    value: new THREE.Color(LAVA_RENDER_CONFIG.palette.coldCrust),
+  };
+  private readonly lavaWarmCrustColorUniform = {
+    value: new THREE.Color(LAVA_RENDER_CONFIG.palette.warmCrust),
+  };
+  private readonly lavaMoltenColorUniform = {
+    value: new THREE.Color(LAVA_RENDER_CONFIG.palette.molten),
+  };
+  private readonly lavaHotColorUniform = {
+    value: new THREE.Color(LAVA_RENDER_CONFIG.palette.hot),
+  };
+  private readonly lavaCoreColorUniform = {
+    value: new THREE.Color(LAVA_RENDER_CONFIG.palette.core),
+  };
+  private readonly lavaEmissiveScaleUniform = {
+    value: Math.max(1, LAVA_RENDER_CONFIG.emissiveScale),
+  };
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -399,7 +495,9 @@ export class WaterRenderer3D {
     this.liquidFlowConfig = textureConfig;
     this.liquidLayerScalesUniform.value.fromArray(textureConfig.layerScales);
     this.waterMaterial = new THREE.MeshBasicMaterial({
-      color: lava ? lavaSurfaceColor() : WATER_RENDER_CONFIG.color,
+      // Lava's shader owns its complete palette. White leaves those linear
+      // colours untouched before the stock fog/tone-mapping tail runs.
+      color: lava ? 0xffffff : WATER_RENDER_CONFIG.color,
       map: this.liquidTexture,
       transparent: !lava && !WATER_FULLY_OPAQUE,
       opacity: lava || WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
@@ -420,6 +518,7 @@ export class WaterRenderer3D {
     // Flow grain belongs to the horizontal skin. Stretching it down the
     // render-only world-box curtains would turn every wave into a long stripe.
     this.waterCurtainMaterial.map = null;
+    if (lava) this.waterCurtainMaterial.color.copy(lavaCurtainColor());
     this.waterCurtainMaterial.forceSinglePass = true;
     // Only the horizontal gameplay water surface owns water occlusion. These
     // render-only outer panels contain no pickable/gameplay surface and have
@@ -493,6 +592,12 @@ export class WaterRenderer3D {
       shader.uniforms.uLiquidFlow1 = this.liquidFlowOffsetUniforms[1];
       shader.uniforms.uLiquidFlow2 = this.liquidFlowOffsetUniforms[2];
       shader.uniforms.uLiquidLayerScales = this.liquidLayerScalesUniform;
+      shader.uniforms.uLavaColdCrustColor = this.lavaColdCrustColorUniform;
+      shader.uniforms.uLavaWarmCrustColor = this.lavaWarmCrustColorUniform;
+      shader.uniforms.uLavaMoltenColor = this.lavaMoltenColorUniform;
+      shader.uniforms.uLavaHotColor = this.lavaHotColorUniform;
+      shader.uniforms.uLavaCoreColor = this.lavaCoreColorUniform;
+      shader.uniforms.uLavaEmissiveScale = this.lavaEmissiveScaleUniform;
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <map_pars_fragment>',
@@ -503,8 +608,11 @@ export class WaterRenderer3D {
           mode === 'lava' ? LAVA_MAP_FRAGMENT : WATER_MAP_FRAGMENT,
         );
     };
-    this.waterMaterial.customProgramCacheKey = () => `${mode}-wind-flow-v1`;
-    this.waterMaterial.userData.liquidSurfaceShader = `${mode}-wind-flow-v1`;
+    const shaderVersion = mode === 'lava'
+      ? 'lava-viscous-flow-v2'
+      : 'water-wind-flow-v1';
+    this.waterMaterial.customProgramCacheKey = () => shaderVersion;
+    this.waterMaterial.userData.liquidSurfaceShader = shaderVersion;
     this.waterMaterial.needsUpdate = true;
   }
 
@@ -518,11 +626,12 @@ export class WaterRenderer3D {
     this.liquidTextureTileWorldSize = textureConfig.tileWorldSize;
     this.liquidFlowConfig = textureConfig;
     this.liquidLayerScalesUniform.value.fromArray(textureConfig.layerScales);
+    this.liquidFlowElapsedSeconds = 0;
     this.liquidTimeUniform.value = 0;
     for (const offset of this.liquidFlowOffsetUniforms) offset.value.set(0, 0);
 
     this.waterMaterial.color.copy(
-      lava ? lavaSurfaceColor() : new THREE.Color(WATER_RENDER_CONFIG.color),
+      lava ? new THREE.Color(0xffffff) : new THREE.Color(WATER_RENDER_CONFIG.color),
     );
     this.waterMaterial.map = this.liquidTexture;
     this.waterMaterial.transparent = !lava && !WATER_FULLY_OPAQUE;
@@ -531,7 +640,9 @@ export class WaterRenderer3D {
       : WATER_RENDER_CONFIG.opacity;
     this.configureSurfaceShader(mode);
 
-    this.waterCurtainMaterial.color.copy(this.waterMaterial.color);
+    this.waterCurtainMaterial.color.copy(
+      lava ? lavaCurtainColor() : this.waterMaterial.color,
+    );
     this.waterCurtainMaterial.transparent = this.waterMaterial.transparent;
     this.waterCurtainMaterial.opacity = this.waterMaterial.opacity;
     this.waterCurtainMaterial.needsUpdate = true;
@@ -875,13 +986,16 @@ export class WaterRenderer3D {
     this.lastWaterBoundaryMode = mode;
   }
 
-  /** Integrate three continuous downstream offsets. Each layer oscillates a
-   * little around the current wind bearing on its own prime-number period,
-   * which keeps the surface coherent without forming one mechanically clean
-   * conveyor belt. Integrating displacement avoids UV jumps when wind turns. */
+  /** Integrate three continuous downstream offsets. Each layer smoothly
+   * wanders between pseudo-random headings around the current wind bearing on
+   * its own prime-number interval, keeping coherent flow without a repeating
+   * conveyor weave. Integrating displacement avoids UV jumps when wind turns. */
   private advanceLiquidFlow(dtSec: number, wind: LiquidFlowWind | undefined): void {
     if (!Number.isFinite(dtSec) || dtSec <= 0) return;
-    this.liquidTimeUniform.value = (this.liquidTimeUniform.value + dtSec) % 10_000;
+    this.liquidFlowElapsedSeconds += dtSec;
+    // Keep the fragment uniform in a precision-friendly range while the CPU
+    // heading clock remains continuous across long matches.
+    this.liquidTimeUniform.value = this.liquidFlowElapsedSeconds % 10_000;
     const windX = Number.isFinite(wind?.x) ? wind!.x : 0;
     const windZ = Number.isFinite(wind?.y) ? wind!.y : 0;
     const horizontalSpeed = Math.hypot(windX, windZ);
@@ -891,10 +1005,11 @@ export class WaterRenderer3D {
     const directionZ = windZ / horizontalSpeed;
     const config = this.liquidFlowConfig;
     for (let layer = 0; layer < this.liquidFlowOffsetUniforms.length; layer++) {
-      const phase =
-        this.liquidTimeUniform.value * Math.PI * 2 / config.wigglePeriodsSeconds[layer]
-        + LIQUID_FLOW_LAYER_PHASE_RADIANS[layer];
-      const angle = Math.sin(phase) * config.directionWiggleRadians;
+      const angle = liquidFlowHeadingWiggle(
+        this.liquidFlowElapsedSeconds,
+        config.wigglePeriodsSeconds[layer],
+        LIQUID_FLOW_LAYER_RANDOM_SEEDS[layer],
+      ) * config.directionWiggleRadians;
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const layerDirectionX = directionX * cos - directionZ * sin;

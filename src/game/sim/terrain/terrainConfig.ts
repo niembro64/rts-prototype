@@ -10,6 +10,24 @@ export const TILE_FLOOR_Y = terrainConfig.world.floorY;
 const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
+/** Lava always has a substantial fixed floor, then scales upward with the
+ * target's own durability so high-health units cannot outgrow the hazard. */
+export const LAVA_MINIMUM_DAMAGE_PER_SECOND =
+  terrainConfig.water.lavaDamage.minimumPerSecond;
+export const LAVA_MAX_HEALTH_FRACTION_PER_SECOND =
+  terrainConfig.water.lavaDamage.maxHealthFractionPerSecond;
+
+if (!Number.isFinite(LAVA_MINIMUM_DAMAGE_PER_SECOND) ||
+    LAVA_MINIMUM_DAMAGE_PER_SECOND <= 0) {
+  throw new Error('terrainConfig.water.lavaDamage.minimumPerSecond must be positive');
+}
+if (!Number.isFinite(LAVA_MAX_HEALTH_FRACTION_PER_SECOND) ||
+    LAVA_MAX_HEALTH_FRACTION_PER_SECOND <= 0) {
+  throw new Error(
+    'terrainConfig.water.lavaDamage.maxHealthFractionPerSecond must be positive',
+  );
+}
+
 /** Render-only terrain brightness at and below the water surface. */
 export const TERRAIN_SUBMERGED_BRIGHTNESS =
   terrainConfig.water.terrainDarkening.submergedBrightness;

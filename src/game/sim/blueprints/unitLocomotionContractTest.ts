@@ -499,6 +499,11 @@ export function runUnitLocomotionContractTest(): void {
         (expected.landFatal ? blueprint.hp / 2 : 0),
       `${unitBlueprintId} authors universal numeric land damage; only water-only hulls burn ashore`,
     );
+    assertContract(
+      runtime.environmentalHazards.lavaDamageMultiplier ===
+        (unitBlueprintId === 'unitRex' ? 0 : 1),
+      `${unitBlueprintId} resolves its explicit lava-survival policy`,
+    );
   }
 
   // The bot rig is shared by two presets: `bot` is a land bot that drowns
@@ -675,4 +680,8 @@ export function runUnitLocomotionContractTest(): void {
   };
   delete waterLift.surfaceFollowingProportionalForceFromWater;
   expectLocomotionError(invalidWaterLift, 'water lift requires its proportional water-surface force');
+
+  const invalidLavaMultiplier = cloneBlueprint(getUnitBlueprint('unitRex').unitLocomotion);
+  invalidLavaMultiplier.environmentalHazards.lavaDamageMultiplier = -1;
+  expectLocomotionError(invalidLavaMultiplier, 'lava damage multiplier must be non-negative');
 }

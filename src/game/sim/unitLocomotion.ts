@@ -217,11 +217,15 @@ export function createUnitLocomotion(
       );
     }
   }
+  const lavaDamageMultiplier = environmentalHazards.lavaDamageMultiplier ?? 1;
   const runtime: UnitLocomotion = {
     type,
     physicsPresetId,
     physics,
-    environmentalHazards: { ...environmentalHazards },
+    environmentalHazards: {
+      ...environmentalHazards,
+      lavaDamageMultiplier,
+    },
     actuator: {
       propulsionAxis: preset.actuator.propulsionAxis,
       turnRateDegreesPerSecond: turnRateOverride ?? preset.actuator.turnRateDegreesPerSecond,
@@ -248,6 +252,10 @@ export function createUnitLocomotion(
   assertUnitLocomotionNonNegativeFinite(
     `${physicsPresetId}.environmentalHazards.landDamagePerSecond`,
     environmentalHazards.landDamagePerSecond,
+  );
+  assertUnitLocomotionNonNegativeFinite(
+    `${physicsPresetId}.environmentalHazards.lavaDamageMultiplier`,
+    lavaDamageMultiplier,
   );
   return runtime;
 }

@@ -3321,7 +3321,9 @@ export class Simulation {
     }
     const waterDamagePerSecond =
       unit.locomotion?.environmentalHazards?.waterDamagePerSecond ?? 0;
-    const key = `${unit.unitBlueprintId}:${unit.mass}:${unit.supportPointOffsetZ}:${this.world.liquidSurfaceMode}:${waterDamagePerSecond}`;
+    const lavaDamageMultiplier =
+      unit.locomotion?.environmentalHazards?.lavaDamageMultiplier ?? 1;
+    const key = `${unit.unitBlueprintId}:${unit.mass}:${unit.supportPointOffsetZ}:${this.world.liquidSurfaceMode}:${waterDamagePerSecond}:${lavaDamageMultiplier}`;
     const cached = this.pathTerrainFilterMemo.get(key);
     if (cached !== undefined) return cached;
     const filter = applyLiquidHazardPathPolicy(
@@ -3332,6 +3334,7 @@ export class Simulation {
       ),
       this.world.liquidSurfaceMode,
       waterDamagePerSecond,
+      lavaDamageMultiplier,
     );
     this.pathTerrainFilterMemo.set(key, filter);
     return filter;

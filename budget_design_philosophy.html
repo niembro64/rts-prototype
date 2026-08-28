@@ -1682,8 +1682,10 @@
         remain authoritative. A stale plan may continue only while its remaining suffix validates
         against the current navigation layers; otherwise the controller holds. Physical capability
         and hazard policy are separate: ordinary water may use the unit's authored wet force
-        envelope, while lava removes the water domain from both MOVE and WAYPOINT routing even for a
-        body that could mechanically swim through it. <code>LIQUID: NONE</code> removes the medium
+        envelope, while damaging lava removes the water domain from both MOVE and WAYPOINT routing
+        even for a body that could mechanically swim through it. An explicitly heat-proof chassis
+        keeps its authored wet traversal in lava; the Rex titan is the current exception.
+        <code>LIQUID: NONE</code> removes the medium
         itself: the authored basin floor becomes ordinary ground for movement, placement, sensing,
         and combat. Air traversal still overflies any liquid that is present.
       </p>
@@ -1873,7 +1875,11 @@
         waypoint domain, but may not voluntarily leave the waypoint domain for recovery-only
         cells. Survival policy is separate again: every unit authors numeric
         <code>waterDamagePerSecond</code>, with zero for water-safe units, and damage samples only
-        whether the authoritative body origin is strictly below the water plane.
+        whether the authoritative body origin is strictly below the water plane. Lava damage has a
+        fixed floor and scales with the target&rsquo;s maximum health, so ordinary units and buildings
+        cannot outgrow the hazard and water-vulnerable units die faster in lava than they drown.
+        Unit locomotion may author <code>lavaDamageMultiplier</code>; omitted resolves to one, while
+        zero is an explicit heat-proof exception that also preserves physically valid lava routing.
       </p>
       <p>
         Surface following is a source-explicit powered support force, not a height clamp. Air
@@ -2172,11 +2178,14 @@
         <code>NONE</code>. WATER&rsquo;s horizontal surface layers three seamless, world-anchored,
         low-contrast flow readings that modulate colour only: authored alpha remains the sole
         transparency control, so texture can never obscure the seabed or submerged units. LAVA
-        samples the same three-layer movement profile from seamless cellular crust, keeping broad
-        plates dark while orange fissures shift and pulse; neither medium is one translated decal.
-        Each layer integrates the live horizontal wind direction at its own speed and wiggles around
-        that bearing on a distinct prime-number period, so the whole surface travels downwind without
-        forming one mechanically clean conveyor. Projectile splashes inherit the active medium:
+        packs seamless major-rift, fine-fracture, and thermal fields into one generated texture, then
+        samples them at three independently moving scales. Nearly black cooling rafts slide over
+        orange melt; fissure cores and sparse upwellings reach yellow-white without making the whole
+        lake glow or pulse together. Neither medium is one translated decal. Each layer integrates
+        the live horizontal wind direction at its own speed and smoothly wanders between seeded
+        pseudo-random headings around that bearing. Distinct prime-number change intervals keep the
+        surface moving generally downwind without forming a repeating conveyor weave. Projectile
+        splashes inherit the active medium:
         water droplets cool through blue and lava droplets cool from white-hot yellow to orange-red,
         including the surface impact ring. Render-only perimeter curtains stay untextured. NONE emits
         no liquid surface, curtains, or splashes and leaves no pickable plane; the authored basin

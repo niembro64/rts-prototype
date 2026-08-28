@@ -110,9 +110,9 @@ export function pathTerrainFilterForLocomotion(
 }
 
 /** Traversability describes physical capability; this layer applies match
- *  hazard policy. Lava is never an intentional or recovery water domain for
- *  non-air bodies, even when their propulsion could physically swim through
- *  it. Likewise a body that TAKES DAMAGE in water (every land preset authors
+ *  hazard policy. Damaging lava is never an intentional or recovery water
+ *  domain, even when a body could mechanically swim through it. An explicitly
+ *  heat-proof body retains that physical domain. Likewise a body that TAKES DAMAGE in water (every land preset authors
  *  a token water thrust, so `move.allowInWater` is physically true) must not
  *  plan through deep water it cannot survive: the water MOVE domain is
  *  stripped unless water is one of its intentional (waypoint) media. Shallow
@@ -123,19 +123,21 @@ export function applyLiquidHazardPathPolicy(
   filter: PathTerrainFilter | null,
   liquidSurfaceMode: LiquidSurfaceMode,
   waterDamagePerSecond: number,
+  lavaDamageMultiplier: number = 1,
 ): PathTerrainFilter | null {
   if (filter === null) return filter;
-  const lava = liquidSurfaceMode === 'lava';
+  const lethalLava = liquidSurfaceMode === 'lava' &&
+    (!Number.isFinite(lavaDamageMultiplier) || lavaDamageMultiplier > 0);
   const lethalWater = Number.isFinite(waterDamagePerSecond) &&
     waterDamagePerSecond > 0 &&
     !filter.navigation.waypoint.allowInWater;
-  if (!lava && !lethalWater) return filter;
+  if (!lethalLava && !lethalWater) return filter;
   return {
     ...filter,
     navigation: {
       waypoint: {
         ...filter.navigation.waypoint,
-        allowInWater: lava ? false : filter.navigation.waypoint.allowInWater,
+        allowInWater: lethalLava ? false : filter.navigation.waypoint.allowInWater,
       },
       move: { ...filter.navigation.move, allowInWater: false },
     },

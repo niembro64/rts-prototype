@@ -2959,6 +2959,11 @@
         "landDamagePerSecond": {
           "type": "number",
           "minimum": 0
+        },
+        "lavaDamageMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Multiplier applied to authoritative lava damage. Omitted means 1; zero is explicit heat immunity and permits an otherwise water-capable unit to route through lava."
         }
       },
       "additionalProperties": false
