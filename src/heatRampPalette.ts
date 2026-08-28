@@ -8,7 +8,7 @@
  * generated from HEAT_RAMP_STOPS, so the two presentations cannot drift.
  */
 
-export type HeatRampStop = Readonly<{
+type HeatRampStop = Readonly<{
   /** Position along the ramp: 0 = hottest, 1 = coolest. */
   t: number;
   r: number;

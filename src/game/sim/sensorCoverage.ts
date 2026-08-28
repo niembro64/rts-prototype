@@ -92,13 +92,13 @@ export type TurretSensorSource = {
   operational: SensorOperationalChannels;
 };
 
-export type TurretJammerSource = {
+type TurretJammerSource = {
   position: Vec3;
   hostMedium: SensorMedium;
   radius: number;
 };
 
-export type AuthoredEntitySensorRadii = {
+type AuthoredEntitySensorRadii = {
   radar: number;
   sonar: number;
   radarJamming: number;
@@ -415,10 +415,6 @@ function getEntityContactVisionRadius(
 
 export function getEntityRadarRadius(entity: Entity): number {
   return getEntityContactVisionRadius(entity, 'aboveWater');
-}
-
-export function getEntitySonarRadius(entity: Entity): number {
-  return getEntityContactVisionRadius(entity, 'underwater');
 }
 
 /**

@@ -63,7 +63,7 @@ type EnvironmentPropNode = {
 
 /** The three authored geometry tiers plus `min`: the MIN/GLYPH rung, where
  *  a tree is one tetrahedron and blade vegetation draws nothing. */
-export type EnvironmentPropTier = PrimitiveGeometryTier | 'min';
+type EnvironmentPropTier = PrimitiveGeometryTier | 'min';
 
 type EnvironmentPropBatch = {
   tiers: Record<EnvironmentPropTier, {

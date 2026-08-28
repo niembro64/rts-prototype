@@ -16,6 +16,11 @@ import type {
 } from './NetworkTypes';
 import { ClientViewState } from './ClientViewState';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
+import {
+  emptyUnitSnapshot,
+  entityDeltaSnapshotAtTick as deltaSnapshot,
+  snapshotAtTick as snapshot,
+} from './snapshotContractFixtures';
 import { STRUCTURE_BLUEPRINT_IDS } from '@/types/blueprintIds';
 import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import { ViewportFootprint } from '../ViewportFootprint';
@@ -269,33 +274,6 @@ function runTypedShieldRangePresentationContractTest(): void {
   }
 }
 
-function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
-  return {
-    hp: null,
-    velocity: null,
-    radius: null,
-    mass: null,
-    supportPointOffsetZ: null,
-    unitBlueprintCode: null,
-    isCommander: null,
-    surfaceNormal: null,
-    orientation: null,
-    angularVelocity3: null,
-    fireState: null,
-    trajectoryMode: null,
-    repeatQueue: null,
-    moveState: null,
-    wantCloak: null,
-    factory: null,
-    cloaked: null,
-    buildTargetId: null,
-    buildTargetIdPresent: false,
-    actions: null,
-    turrets: null,
-    build: null,
-  };
-}
-
 function emptyBuildingSnapshot(): NonNullable<NetworkServerSnapshotEntity['building']> {
   return {
     buildingBlueprintCode: null,
@@ -307,41 +285,6 @@ function emptyBuildingSnapshot(): NonNullable<NetworkServerSnapshotEntity['build
     turrets: null,
     factory: null,
   };
-}
-
-function snapshot(
-  tick: number,
-  entities: NetworkServerSnapshotEntity[],
-): NetworkServerSnapshot {
-  return {
-    tick,
-    entities,
-    entityDeltaOnly: undefined,
-    projectileDeltaOnly: undefined,
-    minimapEntities: undefined,
-    economy: {},
-    resourceMovements: undefined,
-    sprayTargets: undefined,
-    audioEvents: undefined,
-    scanPulses: undefined,
-    projectiles: undefined,
-    gameState: undefined,
-    serverMeta: undefined,
-    terrain: undefined,
-    buildability: undefined,
-    visibilityFiltered: undefined,
-    visionPlayerMask: undefined,
-    removedEntityIds: undefined,
-  };
-}
-
-function deltaSnapshot(
-  tick: number,
-  entities: NetworkServerSnapshotEntity[],
-): NetworkServerSnapshot {
-  const state = snapshot(tick, entities);
-  state.entityDeltaOnly = true;
-  return state;
 }
 
 function installMaterializationMetadata(state: NetworkServerSnapshot): NetworkServerSnapshot {
@@ -667,30 +610,7 @@ export function runClientSnapshotApplierContractTest(): void {
     changedFields: ENTITY_CHANGED_ACTIONS,
     pos: null,
     rotation: null,
-    unit: {
-      hp: null,
-      velocity: null,
-      radius: null,
-      mass: null,
-      supportPointOffsetZ: null,
-      unitBlueprintCode: null,
-      isCommander: null,
-      surfaceNormal: null,
-      orientation: null,
-      angularVelocity3: null,
-      fireState: null,
-      trajectoryMode: null,
-      repeatQueue: null,
-      moveState: null,
-      wantCloak: null,
-      factory: null,
-      cloaked: null,
-      buildTargetId: null,
-      buildTargetIdPresent: false,
-      actions: null,
-      turrets: null,
-      build: null,
-    },
+    unit: emptyUnitSnapshot(),
     building: null,
   };
 

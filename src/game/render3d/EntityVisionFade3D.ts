@@ -122,7 +122,7 @@ export class VisionFadeInClock3D {
   }
 }
 
-export type VanishingVelocity3D = Readonly<{
+type VanishingVelocity3D = Readonly<{
   /** Render-axis velocity in world units per second (x, up, z). */
   x: number;
   y: number;

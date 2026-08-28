@@ -6,9 +6,9 @@
 
 import * as THREE from 'three';
 
-export type LiquidSurfaceTextureMode = 'water' | 'lava';
+type LiquidSurfaceTextureMode = 'water' | 'lava';
 
-export type LiquidSurfaceTextureSpec = Readonly<{
+type LiquidSurfaceTextureSpec = Readonly<{
   resolution: number;
   contrast: number;
 }>;

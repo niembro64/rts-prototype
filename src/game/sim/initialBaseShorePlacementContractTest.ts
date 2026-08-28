@@ -11,11 +11,10 @@
 //   - the field itself: margins sit inside its reach, and its answers agree
 //     with the boolean medium test at cell centres.
 
-import { getModeDefaultPreset } from '../../components/battlePresets';
 import { LAND_CELL_SIZE } from '../../config';
+import { installDemoWaterTerrainFixture } from './demoWaterTerrainContractFixture';
+import { createPhysicsHarness } from '../server/poolFreePhysicsHarness';
 import { DEMO_CONFIG } from '../../demoConfig';
-import { getMetalDepositFlatZones } from './terrain/terrainFlatZones';
-import { getLiquidSurfaceMode, setLiquidSurfaceMode } from './worldSurfaceState';
 import { getUnitBlueprint } from './blueprints';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
@@ -39,15 +38,9 @@ import { spawnInitialBases } from './spawn';
 import { buildTeamRosterFromSeatCounts } from './teamRoster';
 import {
   buildTerrainTileMap,
-  getTerrainRuntimeConfig,
-  getTerrainTeamCount,
   isWaterAt,
   setAuthoritativeTerrainTileMap,
-  setMetalDepositFlatZones,
-  setTerrainRuntimeConfig,
-  setTerrainTeamCount,
 } from './Terrain';
-import { getAuthoritativeTerrainTileMap } from './terrain/terrainState';
 import type { Entity, PlayerId } from './types';
 import { WorldState } from './WorldState';
 import { isFabricatorBuildingBlueprintId } from './blueprints/buildings';
@@ -56,45 +49,9 @@ import {
   openWaterPatrolPairFromCellIndex,
   spawnBackgroundUnitsStandalone,
 } from '../server/BackgroundBattleStandalone';
-import type { PhysicsEngine3D } from '../server/PhysicsEngine3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[initial base shore placement contract] ${message}`);
-}
-
-/** A deep enough perimeter ocean that every seat has an offshore band. */
-const CONTRACT_WATER_PERIMETER_MAGNITUDE = -800;
-
-/** The spawn planner only needs body coordinates and a surface-normal view;
- * mirrors BackgroundBattleStandaloneContractTest's pool-free harness. */
-function createPhysicsHarness(): PhysicsEngine3D {
-  let nextBodySlot = 0;
-  return {
-    hasBodyPoolHeadroom: () => true,
-    createUnitBody(
-      x: number,
-      y: number,
-      _radius: number,
-      _groundOffset: number,
-      _supportSurface: unknown,
-      _mass: number,
-      _label: string,
-      _entityId: number,
-      z: number | undefined,
-    ) {
-      const surfaceNormal = { nx: 0, ny: 0, nz: 1 };
-      return {
-        slot: nextBodySlot++,
-        x,
-        y,
-        z: z ?? 0,
-        vx: 0,
-        vy: 0,
-        vz: 0,
-        createSurfaceNormalView: () => surfaceNormal,
-      };
-    },
-  } as unknown as PhysicsEngine3D;
 }
 
 function footprintCellCentres(entity: Entity): { x: number; y: number }[] {
@@ -336,27 +293,7 @@ function assertNearestPointWalk(field: ShoreDistanceField): void {
 }
 
 export function runInitialBaseShorePlacementContractTest(): void {
-  const preset = getModeDefaultPreset('demo');
-  const previousRuntimeConfig = getTerrainRuntimeConfig();
-  const previousTeamCount = getTerrainTeamCount();
-  const previousTerrain = getAuthoritativeTerrainTileMap();
-  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
-  const previousMetalDepositFlatZones = getMetalDepositFlatZones();
-  setAuthoritativeTerrainTileMap(null);
-  setMetalDepositFlatZones([], false);
-  setTerrainTeamCount(DEMO_CONFIG.allyTeamSeats.length);
-  setLiquidSurfaceMode(preset.liquidSurfaceMode);
-  setTerrainRuntimeConfig({
-    centerMagnitude: preset.centerMagnitude,
-    ringMagnitude: preset.ringMagnitude,
-    dividersMagnitude: preset.dividersMagnitude,
-    perimeterMagnitude: CONTRACT_WATER_PERIMETER_MAGNITUDE,
-    terrainPrecedence: preset.terrainPrecedence,
-    terrainDTerrain: preset.terrainDTerrain,
-    plateauWallSlopeDegrees: preset.plateauWallSlopeDegrees,
-    metalDepositStep: preset.metalDepositStep,
-    terrainDetail: preset.terrainDetail,
-  });
+  const { preset, restore } = installDemoWaterTerrainFixture();
   const mapWidth = preset.mapWidthLandCells * LAND_CELL_SIZE;
   const mapHeight = preset.mapLengthLandCells * LAND_CELL_SIZE;
   try {
@@ -386,10 +323,6 @@ export function runInitialBaseShorePlacementContractTest(): void {
     }
     assertOpeningWaveWaterHulls(world, field, playerIds);
   } finally {
-    setMetalDepositFlatZones(previousMetalDepositFlatZones, false);
-    setTerrainRuntimeConfig(previousRuntimeConfig);
-    setTerrainTeamCount(previousTeamCount);
-    setAuthoritativeTerrainTileMap(previousTerrain);
-    setLiquidSurfaceMode(previousLiquidSurfaceMode);
+    restore();
   }
 }

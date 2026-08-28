@@ -11,14 +11,16 @@
  * it. Looking across a field at a flat structure, the cursor turned into
  * a selection cursor over a vertical slab twice the building's height.
  *
- * Everything now goes through the writers below. A volume is one of four
+ * Everything now goes through the writers below. A volume is one of three
  * shapes in SIM coordinates (x/y horizontal, z up), which is also exactly
  * what the debug overlay draws, so what you click is what you see:
  *
  *   sphere   — units (body-centered; unit bodies really are round)
  *   box      — grounded buildings (footprint x visual height)
- *   cylinder — upright bodies (vegetation props; radius + half-height)
  *   annulus  — the hovering fabricator torus (open center hole and all)
+ *
+ * (Vegetation props are not entities and are picked by Rust's
+ * `vegetation_raycast` against its own capped-cylinder volumes.)
  *
  * The writers fill a caller-owned EntityVolume so the picker's per-entity
  * loop stays allocation-free.
@@ -35,7 +37,7 @@ import {
 import { getBuildingCombatCenterZ, getBuildingVisualTopZ } from './buildingAnchors';
 import { getUnitGroundZ } from './unitGeometry';
 
-type VolumeShape = 'sphere' | 'box' | 'cylinder' | 'annulus';
+type VolumeShape = 'sphere' | 'box' | 'annulus';
 
 /** One volume in sim coordinates. `halfX`/`halfY` carry the radius for
  *  round shapes so every consumer can read a bounding half-extent
@@ -90,18 +92,6 @@ function writeBox(
   out.halfX = halfX; out.halfY = halfY; out.halfZ = halfZ;
   out.innerRadius = 0;
   return halfX > 0 && halfY > 0 && halfZ > 0;
-}
-
-function writeCylinder(
-  out: EntityVolume,
-  x: number, y: number, z: number,
-  radius: number, halfHeight: number,
-): boolean {
-  out.shape = 'cylinder';
-  out.x = x; out.y = y; out.z = z;
-  out.halfX = radius; out.halfY = radius; out.halfZ = halfHeight;
-  out.innerRadius = 0;
-  return radius > 0 && halfHeight > 0;
 }
 
 function writeAnnulus(
@@ -236,18 +226,6 @@ export function writeSelectionVolume(entity: Entity, out: EntityVolume): boolean
   return false;
 }
 
-/** A vegetation prop's pick volume: the upright capped cylinder Rust's
- *  `vegetation_raycast` tests. Props are not entities — thousands of trees
- *  stay out of the entity map — so they get their own writer, but they get
- *  the SAME volume model, and the SEL overlay draws exactly this. */
-export function writeVegetationPropVolume(
-  prop: { x: number; y: number; z: number; radius: number; height: number },
-  out: EntityVolume,
-): boolean {
-  const halfHeight = prop.height * 0.5;
-  return writeCylinder(out, prop.x, prop.y, prop.z + halfHeight, prop.radius, halfHeight);
-}
-
 /** World z the selection volume is centered on. Screen-rect box selection
  *  projects this one point, so it must agree with the volume the ray test
  *  uses or a unit could be rubber-band selected where it cannot be
@@ -376,8 +354,6 @@ export function rayVolumeT(
       return raySphereT(volume, ox, oy, oz, dx, dy, dz);
     case 'box':
       return rayBoxT(volume, ox, oy, oz, dx, dy, dz);
-    case 'cylinder':
-      return rayCylinderT(volume, ox, oy, oz, dx, dy, dz, volume.halfX);
     case 'annulus':
       return rayAnnulusT(volume, ox, oy, oz, dx, dy, dz);
   }
@@ -492,22 +468,6 @@ const _outerScratch = [0, 0];
 const _innerScratch = [0, 0];
 
 /** Ray vs. upright capped cylinder. */
-function rayCylinderT(
-  volume: EntityVolume,
-  ox: number, oy: number, oz: number,
-  dx: number, dy: number, dz: number,
-  radius: number,
-): number {
-  if (radius <= 0 || volume.halfZ <= 0) return -1;
-  if (!slabRange(volume.z - volume.halfZ, volume.z + volume.halfZ, oz, dz, _slabScratch)) {
-    return -1;
-  }
-  if (!axisRange(volume, ox, oy, dx, dy, radius, _outerScratch)) return -1;
-  const enter = Math.max(0, _slabScratch[0], _outerScratch[0]);
-  const exit = Math.min(_slabScratch[1], _outerScratch[1]);
-  return enter > exit ? -1 : enter;
-}
-
 /**
  * Annular cylinder: inside the outer wall, outside the inner hole. The
  * hole is excluded as an interval on the ray, NOT as a second capped

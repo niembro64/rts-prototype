@@ -131,7 +131,7 @@ type PooledMotionUpdate = NetworkServerSnapshotMotionUpdate & {
   _velocity: Vec3;
 };
 
-export type SerializeProjectileSnapshotOptions = {
+type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   fullStateResync: boolean;
   visibility: SnapshotVisibility | undefined;

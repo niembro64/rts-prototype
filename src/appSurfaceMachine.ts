@@ -62,7 +62,7 @@
 import { ref, type Ref } from 'vue';
 import { createStateMachine, type StateMachine } from './game/state/StateMachine';
 
-export type AppSurface =
+type AppSurface =
   | 'init'
   | 'home'
   | 'gameRoomLobby'
@@ -72,7 +72,7 @@ export type AppSurface =
   | 'gameControls'
   | 'gameInfo';
 
-export type AppSurfaceEvent =
+type AppSurfaceEvent =
   | 'boot'
   | 'openHome'
   | 'openEntityLab'

@@ -179,7 +179,10 @@ export function buildRepairCommandForTarget(
   };
 }
 
-export function buildRepairAreaCommand(
+/** Payload shared verbatim by the repair-area and reclaim-area builder
+ *  commands — they differ only in the command type tag, so the field list
+ *  lives once here. */
+function buildBuilderAreaCommandFields(
   commander: Entity | null,
   worldX: number,
   worldY: number,
@@ -191,10 +194,9 @@ export function buildRepairAreaCommand(
   queueInsertIndex?: number,
   targetFilter?: AreaCommandTargetFilter,
   expansion?: BarAreaCommandExpansion,
-): RepairAreaCommand | null {
+): Omit<RepairAreaCommand, 'type'> | null {
   if (!isCommandCapableBuilder(commander)) return null;
   return {
-    type: 'repairArea',
     tick,
     commanderId: commander.id,
     targetX: worldX,
@@ -211,6 +213,26 @@ export function buildRepairAreaCommand(
     targetSplitIndex: expansion?.targetSplitIndex,
     targetSplitCount: expansion?.targetSplitCount,
   };
+}
+
+export function buildRepairAreaCommand(
+  commander: Entity | null,
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+  queueFront = false,
+  queueInsertIndex?: number,
+  targetFilter?: AreaCommandTargetFilter,
+  expansion?: BarAreaCommandExpansion,
+): RepairAreaCommand | null {
+  const fields = buildBuilderAreaCommandFields(
+    commander, worldX, worldY, radius, tick, queue,
+    worldZ, queueFront, queueInsertIndex, targetFilter, expansion,
+  );
+  return fields === null ? null : { type: 'repairArea', ...fields };
 }
 
 export function buildReclaimCommandForTarget(
@@ -273,25 +295,11 @@ export function buildReclaimAreaCommand(
   targetFilter?: AreaCommandTargetFilter,
   expansion?: BarAreaCommandExpansion,
 ): ReclaimAreaCommand | null {
-  if (!isCommandCapableBuilder(commander)) return null;
-  return {
-    type: 'reclaimArea',
-    tick,
-    commanderId: commander.id,
-    targetX: worldX,
-    targetY: worldY,
-    targetZ: worldZ,
-    radius,
-    queue,
-    queueFront,
-    queueInsertIndex,
-    filterCategory: targetFilter?.filterCategory,
-    filterBlueprintId: targetFilter?.filterBlueprintId,
-    targetOrderOriginX: expansion?.targetOrderOriginX,
-    targetOrderOriginY: expansion?.targetOrderOriginY,
-    targetSplitIndex: expansion?.targetSplitIndex,
-    targetSplitCount: expansion?.targetSplitCount,
-  };
+  const fields = buildBuilderAreaCommandFields(
+    commander, worldX, worldY, radius, tick, queue,
+    worldZ, queueFront, queueInsertIndex, targetFilter, expansion,
+  );
+  return fields === null ? null : { type: 'reclaimArea', ...fields };
 }
 
 export function buildCaptureCommandForTarget(

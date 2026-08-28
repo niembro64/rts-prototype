@@ -59,7 +59,3 @@ export function metalCoverageIsWholeMap(value: MetalCoverage): boolean {
 export function isLiquidSurfaceMode(value: unknown): value is LiquidSurfaceMode {
   return LIQUID_SURFACE_MODES.includes(value as LiquidSurfaceMode);
 }
-
-export function liquidSurfaceModeHasLiquid(mode: LiquidSurfaceMode): boolean {
-  return mode !== 'none';
-}

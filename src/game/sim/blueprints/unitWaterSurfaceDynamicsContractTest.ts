@@ -1,4 +1,4 @@
-import type { GameServerConfig } from '@/types/game';
+import { flatWaterWorldConfig } from '../../server/flatWaterContractWorld';
 import {
   SIMULATION_TICK_RATE_OPTIONS,
   type SimulationTickRateHz,
@@ -168,22 +168,10 @@ export function runUnitWaterSurfaceDynamicsContractTest(): void {
   try {
     for (const simulationTickRateHz of SIMULATION_TICK_RATE_OPTIONS) {
       resetReusableSimulationStateForDeterministicReplay();
-      const config: GameServerConfig = {
+      const config = flatWaterWorldConfig(9, {
         playerIds: [TEST_PLAYER_ID],
-        centerMagnitude: 0,
-        ringMagnitude: 0,
-        dividersMagnitude: 0,
-        perimeterMagnitude: -800,
-        terrainPrecedence: 'perimeter-precedence',
-        terrainDTerrain: 0,
-        plateauWallSlopeDegrees: 89,
-        metalDepositStep: 0,
-        terrainDetail: 1,
-        mapWidthLandCells: 9,
-        mapLengthLandCells: 9,
-        converterTax: 0,
         simulationTickRateHz,
-      };
+      });
       const core = new ServerSimulationCore(ServerBootstrap.bootstrap(config));
       try {
         for (const entity of [...core.world.getUnitsAndBuildings()]) {

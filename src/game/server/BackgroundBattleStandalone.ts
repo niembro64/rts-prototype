@@ -257,7 +257,7 @@ function seededFabricatorProductionReserve(world: WorldState, playerId: PlayerId
   return count;
 }
 
-export type OpenWaterPatrolPair = Readonly<{
+type OpenWaterPatrolPair = Readonly<{
   x: number;
   y: number;
   oppositeX: number;

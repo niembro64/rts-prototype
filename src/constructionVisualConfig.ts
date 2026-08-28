@@ -14,7 +14,7 @@ export type ConstructionHostMarkingAxis = 'up' | 'forward' | 'lateral';
  *  host's body (radius-1) space and built by the chassis assemblers;
  *  'constructionArm' profiles are in the commander's construction-arm
  *  local space and built by the bot rig's tool assembler. */
-export type ConstructionHostMarkingAttach = 'chassis' | 'constructionArm';
+type ConstructionHostMarkingAttach = 'chassis' | 'constructionArm';
 
 type ConstructionHostMarkingCenter = Readonly<{
   forward: number;

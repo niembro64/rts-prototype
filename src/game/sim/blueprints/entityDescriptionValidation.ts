@@ -1,5 +1,5 @@
 /** Shared player-facing metadata contract for every unit and building. */
-export type EntityDescriptionFields = Readonly<{
+type EntityDescriptionFields = Readonly<{
   fullName: unknown;
   shortName: unknown;
   shortDescription: unknown;

@@ -32,7 +32,7 @@ type SensorSignatureBuildOptions = {
   includeHardware?: boolean;
 };
 
-export type SensorSignatureMount3D = Readonly<{ x: number; y: number; z: number }>;
+type SensorSignatureMount3D = Readonly<{ x: number; y: number; z: number }>;
 
 const PULSE_COUNT = 3;
 const PULSE_CYCLES_PER_SECOND = 0.62;

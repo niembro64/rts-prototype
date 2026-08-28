@@ -25,7 +25,7 @@ import { getAuthoritativeTerrainTileMap, getTerrainVersion } from './terrain/ter
 import { ensurePathfinderTerrain } from './pathfinderTerrainCache';
 import type { TerrainTileMap } from '../../types/terrain';
 
-export type ShoreMedium = 'ground' | 'water';
+type ShoreMedium = 'ground' | 'water';
 
 export type ShoreDistanceField = Readonly<{
   mapWidth: number;
@@ -57,7 +57,7 @@ export const SHORE_MARGIN_LAND_WAYPOINT_WU = 40;
 /** An opening-wave hull is launched with this much water under and around it. */
 export const SHORE_MARGIN_WATER_SPAWN_WU = 120;
 /** How far (in build cells) a nominal point may be walked to satisfy a margin. */
-export const SHORE_POINT_SEARCH_CELLS = 24;
+const SHORE_POINT_SEARCH_CELLS = 24;
 
 let cachedField: ShoreDistanceField | null = null;
 let cachedTerrain: TerrainTileMap | null = null;

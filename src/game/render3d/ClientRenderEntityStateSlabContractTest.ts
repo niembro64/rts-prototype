@@ -5,10 +5,14 @@ import {
   unitBlueprintIdToCode,
 } from '../../types/network';
 import type {
-  NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
 } from '../network/NetworkTypes';
 import { ClientViewState } from '../network/ClientViewState';
+import {
+  emptyUnitSnapshot,
+  entityDeltaSnapshotAtTick as entityDeltaSnapshot,
+  snapshotAtTick as snapshot,
+} from '../network/snapshotContractFixtures';
 import { quantizeEntityPosition as qEntityPos } from '../network/snapshotQuantization';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import { isShieldPanelTurret } from '../sim/shieldPanelRuntime';
@@ -52,69 +56,6 @@ const FLAT_SUPPORT: WorldSupportSurface = {
   walkable: true,
   sourceKey: 0,
 };
-
-function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
-  return {
-    hp: null,
-    velocity: null,
-    radius: null,
-    mass: null,
-    supportPointOffsetZ: null,
-    unitBlueprintCode: null,
-    isCommander: null,
-    surfaceNormal: null,
-    orientation: null,
-    angularVelocity3: null,
-    fireState: null,
-    trajectoryMode: null,
-    repeatQueue: null,
-    moveState: null,
-    wantCloak: null,
-    factory: null,
-    cloaked: null,
-    buildTargetId: null,
-    buildTargetIdPresent: false,
-    actions: null,
-    turrets: null,
-    build: null,
-  };
-}
-
-function snapshot(
-  tick: number,
-  entities: NetworkServerSnapshotEntity[],
-): NetworkServerSnapshot {
-  return {
-    tick,
-    entities,
-    entityDeltaOnly: undefined,
-    projectileDeltaOnly: undefined,
-    minimapEntities: undefined,
-    economy: {},
-    resourceMovements: undefined,
-    sprayTargets: undefined,
-    audioEvents: undefined,
-    scanPulses: undefined,
-    projectiles: undefined,
-    gameState: undefined,
-    serverMeta: undefined,
-    terrain: undefined,
-    buildability: undefined,
-    visibilityFiltered: undefined,
-    visionPlayerMask: undefined,
-    removedEntityIds: undefined,
-  };
-}
-
-function entityDeltaSnapshot(
-  tick: number,
-  entities: NetworkServerSnapshotEntity[],
-): NetworkServerSnapshot {
-  return {
-    ...snapshot(tick, entities),
-    entityDeltaOnly: true,
-  };
-}
 
 function fullUnitEntity(
   id: number,

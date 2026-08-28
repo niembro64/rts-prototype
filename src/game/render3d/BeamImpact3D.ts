@@ -111,7 +111,7 @@ const EXPLOSION_SPEED_DAMAGE_LOG_GAIN = 0.12;
 const EXPLOSION_SPEED_MAX_DAMAGE_BOOST = 0.75;
 const EJECTA_REFERENCE_SPEED = 68;
 const WATER_EJECTA_REFERENCE_SPEED = 16;
-export type ExplosionChunkSpec = Readonly<{
+type ExplosionChunkSpec = Readonly<{
   /** Fixed geometry and motion band: small-fast (0), medium (1), large-slow (2). */
   sizeClass: TetrahedronParticleSizeClass;
 }>;

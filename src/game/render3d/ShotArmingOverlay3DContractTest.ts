@@ -1,21 +1,16 @@
 import * as THREE from 'three';
 import {
-  getVolumeToggle,
   setVolumeToggle,
   VOLUME_TYPES,
 } from '@/clientBarConfig';
-import type { VolumeType } from '@/types/client';
 import { WorldState } from '../sim/WorldState';
 import { getBuildingBlueprint, getUnitBlueprint } from '../sim/blueprints';
 import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { createEntityVolume, writeArmingVolume } from '../sim/entityVolumes';
 import { readNetworkUnitRadius } from '../network/unitSnapshotFields';
-import type { ClientViewState } from '../network/ClientViewState';
 import type { EntityMesh } from './EntityMesh3D';
-import type { OverlayLineSystem } from './OverlayLineSystem';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
-import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
+import { createSelectionOverlayFixture } from './selectionOverlayContractFixture';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[shot arming overlay contract] ${message}`);
@@ -28,22 +23,8 @@ function assertNear(actual: number, expected: number, message: string): void {
 }
 
 export function runShotArmingOverlay3DContractTest(): void {
-  const previous = new Map<VolumeType, boolean>();
-  for (const type of VOLUME_TYPES) previous.set(type, getVolumeToggle(type));
-
-  const sphereSourceGeom = createPrimitiveSphereGeometry('debug', 'close');
-  const radiusSphereGeom = new THREE.WireframeGeometry(sphereSourceGeom);
-  const selectedIds = new Set<number>();
-  const renderer = new SelectionOverlayRenderer3D({
-    world: new THREE.Group(),
-    clientViewState: {
-      getMapWidth: () => 512,
-      getMapHeight: () => 512,
-      getSelectedIds: () => selectedIds,
-    } as unknown as ClientViewState,
-    radiusSphereGeom,
-    overlayLines: undefined as unknown as OverlayLineSystem,
-  });
+  const { renderer, selectedIds, radiusSphereGeom, restoreAndDispose } =
+    createSelectionOverlayFixture();
 
   try {
     for (const type of VOLUME_TYPES) setVolumeToggle(type, type === 'arming');
@@ -129,9 +110,6 @@ export function runShotArmingOverlay3DContractTest(): void {
     renderer.updateHostVolumes(buildingMesh, building);
     assertContract(!buildingArmMesh.visible, 'ARM host box mesh must hide when its button is inactive');
   } finally {
-    for (const type of VOLUME_TYPES) setVolumeToggle(type, previous.get(type) ?? false);
-    renderer.dispose();
-    radiusSphereGeom.dispose();
-    sphereSourceGeom.dispose();
+    restoreAndDispose();
   }
 }

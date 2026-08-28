@@ -6,7 +6,7 @@
 // window (steady) merged with the current one when nothing has closed yet,
 // so the bar shows numbers within the first second of a match.
 
-export const PATHFINDING_TELEMETRY_WINDOW_TICKS = 100;
+const PATHFINDING_TELEMETRY_WINDOW_TICKS = 100;
 
 export class RollingTickStat {
   private curSum = 0;

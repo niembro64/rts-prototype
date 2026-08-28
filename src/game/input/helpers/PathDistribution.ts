@@ -86,7 +86,7 @@ export function calculateLinePathTargets(
  *  128 keeps the exact O(n^3) solve comfortably below a command-frame budget
  *  in the browser while covering formations much larger than BAR's adaptive
  *  desktop-Lua default. */
-export const EXACT_LINE_ASSIGNMENT_UNIT_LIMIT = 128;
+const EXACT_LINE_ASSIGNMENT_UNIT_LIMIT = 128;
 
 const ASSIGNMENT_EPSILON = 1e-9;
 const NO_CROSS_RELAXATION_PASSES = 8;

@@ -44,11 +44,6 @@ function projectileOverlapsArmingVolume(
       const outsideZ = Math.max(Math.abs(dz) - volume.halfZ, 0);
       return outsideX * outsideX + outsideY * outsideY + outsideZ * outsideZ <= radius * radius;
     }
-    case 'cylinder': {
-      const radialOutside = Math.max(DMath.hypot(dx, dy) - volume.halfX, 0);
-      const verticalOutside = Math.max(Math.abs(dz) - volume.halfZ, 0);
-      return radialOutside * radialOutside + verticalOutside * verticalOutside <= radius * radius;
-    }
     case 'annulus': {
       const radialDistance = DMath.hypot(dx, dy);
       const radialOutside = radialDistance < volume.innerRadius
