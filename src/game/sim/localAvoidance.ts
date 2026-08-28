@@ -37,7 +37,7 @@ export type AvoidanceNeighbor = Readonly<{
   velocityY: number;
 }>;
 
-export type AvoidanceSelf = Readonly<{
+type AvoidanceSelf = Readonly<{
   id: number;
   x: number;
   y: number;

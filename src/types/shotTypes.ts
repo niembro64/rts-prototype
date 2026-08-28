@@ -15,7 +15,7 @@ export type {
   BeamReflectorKind,
   BeamRay,
   ShieldBarrierConfig,
-  ShieldBarrierShape,
+  
   
   ShieldReflectionDirection,
   

@@ -90,7 +90,7 @@ const PATH_REQUEST_COMMANDER_REFINE = 13;
 /** Upper bound (inclusive, in ticks) of each admission-age histogram bucket;
  *  the final bucket is open-ended. Age = ticks a request waited in a queue
  *  before it was served. */
-export const PATH_PLAN_ADMISSION_AGE_BUCKET_LIMITS = [0, 1, 3, 7, 15, 31, 63] as const;
+const PATH_PLAN_ADMISSION_AGE_BUCKET_LIMITS = [0, 1, 3, 7, 15, 31, 63] as const;
 export const PATH_PLAN_ADMISSION_AGE_BUCKET_LABELS = [
   '0', '1', '2-3', '4-7', '8-15', '16-31', '32-63', '64+',
 ] as const;
@@ -165,9 +165,9 @@ type PlayerPathRequestLanes = {
 
 /** Route-queue serve: return the work units spent (0 = the entry resolved
  *  free — stale, superseded, or no order — and the drain continues). */
-export type PathPlanRouteServe = (entityId: EntityId, lane: number) => number;
+type PathPlanRouteServe = (entityId: EntityId, lane: number) => number;
 /** Refine-queue serve: return true only when a real search job was admitted. */
-export type PathPlanRefineServe = (entityId: EntityId, lane: number) => boolean;
+type PathPlanRefineServe = (entityId: EntityId, lane: number) => boolean;
 
 /** Players holding a retained A* frontier. `Map` and `Set` both satisfy it. */
 export type PathPlanActiveJobOwners = { has(playerId: PlayerId): boolean };

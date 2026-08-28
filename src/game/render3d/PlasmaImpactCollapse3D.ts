@@ -7,7 +7,7 @@ export const PLASMA_IMPACT_COLLAPSE_DURATION_MS = 180;
 /** Remaining fraction of the recorded trail that may be drawn. Smoothstep
  * gives the incoming tail zero velocity at both the impact and disappearance
  * endpoints instead of replacing one abrupt cut with another. */
-export function plasmaImpactCollapseRemainingFraction(
+function plasmaImpactCollapseRemainingFraction(
   elapsedMs: number,
   durationMs: number = PLASMA_IMPACT_COLLAPSE_DURATION_MS,
 ): number {

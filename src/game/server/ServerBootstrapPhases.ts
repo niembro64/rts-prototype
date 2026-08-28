@@ -319,7 +319,7 @@ export function resolveBootstrapSpawnRules(
   };
 }
 
-export type BootstrapSeatSpawnGroups = {
+type BootstrapSeatSpawnGroups = {
   commanderSeatPlayerIds: PlayerId[];
   baseSeatPlayerIds: PlayerId[];
   baseAndUnitsSeatPlayerIds: PlayerId[];

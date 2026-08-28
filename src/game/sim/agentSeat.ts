@@ -30,8 +30,6 @@
  * and every peer must agree on them at frame 0.
  */
 
-export type SeatAgentType = 'human' | 'bot';
-
 export const SEAT_INITIAL_STATES = [
   'commander',
   'baseBuildings',

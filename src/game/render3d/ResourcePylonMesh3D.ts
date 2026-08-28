@@ -17,7 +17,7 @@ export type ResourcePylonDirection = 'inbound' | 'outbound';
  *    source is above it (solar).
  *  - `none`: the host's own machine is the head (the wind nacelle rides the
  *    mast top), so the mast simply ends. */
-export type ResourcePylonHeadStyle = 'collar' | 'receiver' | 'none';
+type ResourcePylonHeadStyle = 'collar' | 'receiver' | 'none';
 
 export type ResourcePylonRig = {
   resource: ResourcePylonResource;
@@ -76,7 +76,7 @@ const resourceCollarMaterial: Record<ResourcePylonResource, THREE.Material> = {
 /** Three legs stand on a circle of this fraction of the pylon radius, so the
  *  mast's footprint is the authored radius while the bore between the legs
  *  stays open for the flow beads. */
-export const PYLON_MAST_LEG_COUNT = 3;
+const PYLON_MAST_LEG_COUNT = 3;
 const MAST_LEG_CIRCLE_FRAC = 0.8;
 const MAST_LEG_WIDTH_FRAC = 0.34;
 const MAST_RING_RADIUS_FRAC = 1.05;
@@ -94,7 +94,7 @@ const BEAD_FRAC = 0.4;
 /** How many rings a mast of this height carries. Deterministic from the
  *  host's authored dimensions, never from the geometry tier, because the
  *  detail list must be identical across tiers. */
-export function pylonMastRingCount(pylonHeight: number, pylonRadius: number): number {
+function pylonMastRingCount(pylonHeight: number, pylonRadius: number): number {
   const pitch = Math.max(1, pylonRadius * MAST_RING_PITCH_RADII);
   return Math.max(MAST_RING_COUNT_MIN, Math.min(MAST_RING_COUNT_MAX, Math.round(pylonHeight / pitch)));
 }

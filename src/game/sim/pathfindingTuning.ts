@@ -184,11 +184,9 @@ export const PATHFINDING_PARTIAL_PLAN_RETRY_TICKS = requireNonNegativeInteger(
  *  body radius — string-pull shortcuts, direct plans, the follower's corner
  *  shortcut and polyline validation all walk cells at this margin, while
  *  the cell-to-cell A* step keeps the exact body gate. Consumed by the Rust
- *  build (build.rs); exported here so the contract is visible from TS. */
-export const PATHFINDING_LINE_CLEARANCE_MARGIN_WU = requireNonNegativeNumber(
-  'lineClearanceMarginWu',
-  config.lineClearanceMarginWu,
-);
+ *  build (build.rs); validated here so a bad config value still fails fast
+ *  from TS. */
+requireNonNegativeNumber('lineClearanceMarginWu', config.lineClearanceMarginWu);
 
 export const PATHFINDING_DIRECT_PLAN_MAX_DISTANCE_WU = requireNonNegativeNumber(
   'directPlanMaxDistanceWu',
@@ -201,16 +199,11 @@ export const PATHFINDING_HIERARCHICAL_CLUSTER_SIZE_CELLS = requirePositiveIntege
 );
 /** Weighted-A* factor for the corridor refinement (WASM consumer): the
  *  hierarchy fixes the route's shape, so a bounded-suboptimal refinement
- *  keeps expansions low on sloped/heated terrain. */
-export const PATHFINDING_CORRIDOR_HEURISTIC_WEIGHT = requireNonNegativeNumber(
-  'corridorHeuristicWeight',
-  config.corridorHeuristicWeight,
-);
-/** Cost multiplier ceiling for a fully heated cell (WASM consumer). */
-export const PATHFINDING_TRAFFIC_HEAT_PENALTY = requireNonNegativeNumber(
-  'trafficHeatPenalty',
-  config.trafficHeatPenalty,
-);
+ *  keeps expansions low on sloped/heated terrain. Validated for build.rs. */
+requireNonNegativeNumber('corridorHeuristicWeight', config.corridorHeuristicWeight);
+/** Cost multiplier ceiling for a fully heated cell (WASM consumer);
+ *  validated for build.rs. */
+requireNonNegativeNumber('trafficHeatPenalty', config.trafficHeatPenalty);
 /** Fixed-tick cadence at which the traffic-heat layer decays by a quarter. */
 export const PATHFINDING_TRAFFIC_HEAT_DECAY_TICKS = requirePositiveInteger(
   'trafficHeatDecayTicks',

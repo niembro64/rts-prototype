@@ -259,7 +259,7 @@ const STANDING_PELVIS_HEIGHT_RATIO = 0.82;
 /** Human-scale and construction bipeds are too small on screen for nested
  * actuator shells to read. Commander- and titan-scale bots stay fully authored. */
 export const COMPACT_BOT_MAX_UNIT_RADIUS = 18;
-export const COMPACT_BOT_LIMB_WIDTH_SCALE = 1.14;
+const COMPACT_BOT_LIMB_WIDTH_SCALE = 1.14;
 /** Conventional authored shoe roll, based on the BAR Commander approach.
  * The angles are deliberately restrained at RTS camera distance. */
 const STANDING_FOOT_PUSH_OFF_RAD = THREE.MathUtils.degToRad(-14);

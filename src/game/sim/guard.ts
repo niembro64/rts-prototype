@@ -130,14 +130,14 @@ export function isValidGuardRetaliationAttack(
   );
 }
 
-export type GuardFollowMode =
+type GuardFollowMode =
   | 'hold'
   | 'airFollow'
   | 'stoppedApproach'
   | 'movingFormation'
   | 'intercept';
 
-export type GuardFollowPlan = {
+type GuardFollowPlan = {
   mode: GuardFollowMode;
   x: number;
   y: number;
@@ -275,7 +275,7 @@ export function shouldRefreshGuardFollowGoal(
  *   - `ready`   — no work right now; stay within build range of the directly
  *                 guarded ally so a new job can begin without a catch-up lap.
  *  Returns null only when there is no valid builder Guard relationship. */
-export type GuardService =
+type GuardService =
   | { target: Entity; kind: 'build' | 'factory' | 'heal' | 'ready' }
   | { target: ReclaimTarget; kind: 'reclaim' };
 

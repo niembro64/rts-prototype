@@ -98,32 +98,6 @@ function buildAnnulusWireframeGeometry(
   return geometry;
 }
 
-/** Unit cylinder wireframe (radius 1, y in ±1): two rim circles joined by
- *  vertical ribs. Scaled (radius, halfHeight, radius) per volume — this is
- *  the target-acquisition cylinder shape Rust combat targeting tests for
- *  every entity. */
-function buildUnitCylinderWireframeGeometry(): THREE.BufferGeometry {
-  const positions: number[] = [];
-  for (const y of [1, -1]) {
-    for (let i = 0; i < ANNULUS_WIREFRAME_SEGMENTS; i++) {
-      const a0 = (i / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
-      const a1 = ((i + 1) / ANNULUS_WIREFRAME_SEGMENTS) * Math.PI * 2;
-      positions.push(
-        Math.cos(a0), y, Math.sin(a0),
-        Math.cos(a1), y, Math.sin(a1),
-      );
-    }
-  }
-  for (let i = 0; i < ANNULUS_WIREFRAME_RIBS; i++) {
-    const a = (i / ANNULUS_WIREFRAME_RIBS) * Math.PI * 2;
-    const cx = Math.cos(a);
-    const sz = Math.sin(a);
-    positions.push(cx, 1, sz, cx, -1, sz);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  return geometry;
-}
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 const _selectedSensorPosition = { x: 0, y: 0, z: 0 };
@@ -173,8 +147,6 @@ export class SelectionOverlayRenderer3D {
   private readonly radiusSphereGeom: THREE.BufferGeometry;
   /** Unit-cube edge wireframe, non-uniformly scaled per building box. */
   private readonly radiusBoxGeom = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-  /** Unit cylinder wireframe, scaled (r, halfH, r) per acquisition volume. */
-  private readonly radiusCylinderGeom = buildUnitCylinderWireframeGeometry();
   /** Annulus wireframes keyed by exact dims — one per hovering blueprint. */
   private readonly annulusGeomCache = new Map<string, THREE.BufferGeometry>();
   private readonly supportDiagnosticSurface = createWorldSupportSurface();
@@ -720,7 +692,6 @@ export class SelectionOverlayRenderer3D {
     this.radiusMatArming.dispose();
     this.turretLockOnVolumes.dispose();
     this.radiusBoxGeom.dispose();
-    this.radiusCylinderGeom.dispose();
     for (const geometry of this.annulusGeomCache.values()) geometry.dispose();
     this.annulusGeomCache.clear();
     this.supportDiagnosticNextLogAtMs.clear();
@@ -760,11 +731,9 @@ export class SelectionOverlayRenderer3D {
     }
     const geometry = volume.shape === 'box'
       ? this.radiusBoxGeom
-      : volume.shape === 'cylinder'
-        ? this.radiusCylinderGeom
-        : this.radiusSphereGeom;
-    // The unit box spans ±0.5 per axis; the unit sphere and cylinder span
-    // ±1, so boxes take the full extent and the round shapes take halves.
+      : this.radiusSphereGeom;
+    // The unit box spans ±0.5 per axis; the unit sphere spans ±1, so
+    // boxes take the full extent and the sphere takes halves.
     const scale = volume.shape === 'box' ? 2 : 1;
     this.setRadiusVolume(
       rings, key, true, parent, geometry, centerY,

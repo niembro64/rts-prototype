@@ -13,7 +13,7 @@ export const TETRAHEDRON_PARTICLE_MEDIUM: TetrahedronParticleSizeClass = 1;
 export const TETRAHEDRON_PARTICLE_LARGE: TetrahedronParticleSizeClass = 2;
 
 /** The small class radius; every larger class is an exact multiple of it. */
-export const TETRAHEDRON_PARTICLE_SMALL_RADIUS = 0.75;
+const TETRAHEDRON_PARTICLE_SMALL_RADIUS = 0.75;
 /** Each class is exactly this many times the radius of the class below it. */
 export const TETRAHEDRON_PARTICLE_CLASS_RADIUS_RATIO = 2;
 
@@ -30,13 +30,13 @@ export const TETRAHEDRON_PARTICLE_RADIUS = [
 /** Smaller chunks move faster; the separated bands keep that ordering even
  * after the bounded per-particle speed variation is applied. */
 export const TETRAHEDRON_PARTICLE_SPEED_SCALE = [1.6, 1, 0.6] as const;
-export const TETRAHEDRON_PARTICLE_SPEED_VARIATION_MIN = 0.85;
-export const TETRAHEDRON_PARTICLE_SPEED_VARIATION_RANGE = 0.3;
+const TETRAHEDRON_PARTICLE_SPEED_VARIATION_MIN = 0.85;
+const TETRAHEDRON_PARTICLE_SPEED_VARIATION_RANGE = 0.3;
 
 export const TETRAHEDRON_PARTICLE_SPIN_MIN_RAD_PER_SEC = 7;
 export const TETRAHEDRON_PARTICLE_SPIN_MAX_RAD_PER_SEC = 22;
 
-export type MutableTetrahedronSpinAxis = {
+type MutableTetrahedronSpinAxis = {
   x: number;
   y: number;
   z: number;

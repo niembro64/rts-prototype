@@ -2,7 +2,7 @@ export const CANONICAL_ENTITY_PREVIEW_YAW_RAD = -Math.PI / 4;
 export const CANONICAL_ENTITY_PREVIEW_ELEVATION_RAD = Math.PI / 4;
 export const ENTITY_PREVIEW_CONTAIN_MARGIN = 1.04;
 
-export type EntityPreviewCameraFit = {
+type EntityPreviewCameraFit = {
   distance: number;
   projectedHalfWidth: number;
   projectedHalfHeight: number;

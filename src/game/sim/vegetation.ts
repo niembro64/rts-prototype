@@ -162,11 +162,6 @@ export function ensureVegetationGenerated(
   return installedProps;
 }
 
-/** The installed prop layout, empty before generation. */
-export function getVegetationProps(): readonly VegetationProp[] {
-  return installedProps;
-}
-
 export function getVegetationProp(index: number): VegetationProp | undefined {
   return installedProps[index];
 }
@@ -266,7 +261,7 @@ export function clearVegetation(): void {
 
 /** True while the prop still has work left in it. Consumed props stay
  *  in the list at a stable index and simply report false. */
-export function isVegetationAlive(index: number): boolean {
+function isVegetationAlive(index: number): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
   if (sim.vegetationPropState(index, _propStateOut) === 0) return false;

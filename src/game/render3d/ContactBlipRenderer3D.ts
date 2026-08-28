@@ -116,13 +116,13 @@ type ContactTrack = {
 
 /** Writes [valid, x, y, z] for each id. The batch is ephemeral and must use
  * the same presentation history/alpha as identified entity rendering. */
-export type ContactBlipPositionResolver3D = (
+type ContactBlipPositionResolver3D = (
   entityIds: readonly number[],
   out: Float32Array,
 ) => void;
 
 /** Per-frame vision-fade presentation inputs for contacts. */
-export type ContactBlipVisionFade3D = Readonly<{
+type ContactBlipVisionFade3D = Readonly<{
   /** TIME fades active: blips rise/fall over the visionConfig durations and
    *  follow the shared entity pose while dying. Off in DISTANCE mode. */
   timeFades: boolean;
