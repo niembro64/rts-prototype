@@ -26,7 +26,7 @@ import {
 } from '../game/input/commandHotkeyPresentation';
 import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import BarButton from './BarButton.vue';
-import BarButtonGroup from './BarButtonGroup.vue';
+import BarButtons from './BarButtons.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
@@ -271,24 +271,25 @@ function resetEveryCustomHotkey(): void {
 
 <template>
   <div class="control-bar" :style="model.barStyle">
-    <div class="bar-info">
-      <BarButton
-        :active="true"
-        class="bar-label"
-        title="Click to reset client settings to defaults"
-        @click="model.resetClientDefaults"
-      >
-        <span class="bar-label-text">{{ model.clientLabel }}</span
-        ><span class="bar-label-hover">DEFAULTS</span>
-      </BarButton>
-      <BarButton
-        :active="model.playerClientEnabled"
-        class="client-power-button"
-        :title="model.playerClientEnabled ? `Turn ${model.clientLabel} game rendering off` : `Turn ${model.clientLabel} game rendering on`"
-        @click="model.togglePlayerClientEnabled"
-      >{{ model.playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
-    </div>
     <div class="bar-controls">
+      <BarControlGroup>
+        <BarButtons>
+          <BarButton
+            :active="true"
+            class="bar-label"
+            title="Click to reset client settings to defaults"
+            @click="model.resetClientDefaults"
+          >
+            <span class="bar-label-text">{{ model.clientLabel }}</span
+            ><span class="bar-label-hover">DEFAULTS</span>
+          </BarButton>
+          <BarButton
+            :active="model.playerClientEnabled"
+            :title="model.playerClientEnabled ? `Turn ${model.clientLabel} game rendering off` : `Turn ${model.clientLabel} game rendering on`"
+            @click="model.togglePlayerClientEnabled"
+          >{{ model.playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
+        </BarButtons>
+      </BarControlGroup>
       <BarControlGroup v-if="model.displayedClientTime">
         <BarDivider />
         <span
@@ -308,7 +309,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>WAYPOINTS:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.waypointDetail.options"
             :key="opt.value"
@@ -316,12 +317,12 @@ function resetEveryCustomHotkey(): void {
             title="Waypoint visualization. SIMPLE connects authored command points. DETAILED shows only the exact remaining active movement plan; future command points remain visible but unconnected until planned."
             @click="model.changeWaypointDetail(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Command hotkey preset used by keyboard dispatch and command-card labels.">KEYS:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="presetId in COMMAND_HOTKEY_PRESET_IDS"
             :key="presetId"
@@ -329,12 +330,14 @@ function resetEveryCustomHotkey(): void {
             :title="`Use ${COMMAND_HOTKEY_PRESET_DESCRIPTIONS[presetId]} command hotkeys`"
             @click="model.changeCommandHotkeyPreset(presetId)"
           >{{ COMMAND_HOTKEY_PRESET_LABELS[presetId] }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="hotkeyEditorOpen"
-          title="Edit local custom command hotkeys"
-          @click="toggleHotkeyEditor"
-        >EDIT</BarButton>
+        </BarButtons>
+        <BarButtons>
+          <BarButton
+            :active="hotkeyEditorOpen"
+            title="Edit local custom command hotkeys"
+            @click="toggleHotkeyEditor"
+          >EDIT</BarButton>
+        </BarButtons>
         <BarLabel :title="hotkeyConflictTitle">CONFLICTS:</BarLabel>
         <span
           class="fps-value"
@@ -347,14 +350,16 @@ function resetEveryCustomHotkey(): void {
         >
           <div class="hotkey-editor-header">
             <BarLabel title="Click BIND on a command, then press the desired key chord. Escape cancels capture.">CUSTOM KEYS:</BarLabel>
-            <BarButton
-              title="Reset every custom command binding to the prototype fallback"
-              @click="resetEveryCustomHotkey"
-            >RESET ALL</BarButton>
-            <BarButton
-              title="Close custom hotkey editor"
-              @click="toggleHotkeyEditor"
-            >CLOSE</BarButton>
+            <BarButtons>
+              <BarButton
+                title="Reset every custom command binding to the prototype fallback"
+                @click="resetEveryCustomHotkey"
+              >RESET ALL</BarButton>
+              <BarButton
+                title="Close custom hotkey editor"
+                @click="toggleHotkeyEditor"
+              >CLOSE</BarButton>
+            </BarButtons>
           </div>
           <div class="hotkey-editor-grid">
             <div
@@ -368,19 +373,17 @@ function resetEveryCustomHotkey(): void {
                 class="hotkey-key"
                 :title="`Active key: ${row.activeKey}`"
               >{{ row.capturing ? 'PRESS KEY' : row.customKey }}</span>
-              <button
-                type="button"
-                class="hotkey-row-btn"
-                :title="row.capturing ? 'Press a new key chord, or Escape to cancel' : `Bind ${row.label}`"
-                @click="beginHotkeyCapture(row.commandId)"
-                @keydown="handleHotkeyCapture(row.commandId, $event)"
-              >BIND</button>
-              <button
-                type="button"
-                class="hotkey-row-btn"
-                :title="`Reset ${row.label} to prototype fallback`"
-                @click="resetCustomHotkey(row.commandId)"
-              >RESET</button>
+              <BarButtons>
+                <BarButton
+                  :title="row.capturing ? 'Press a new key chord, or Escape to cancel' : `Bind ${row.label}`"
+                  @click="beginHotkeyCapture(row.commandId)"
+                  @keydown="handleHotkeyCapture(row.commandId, $event)"
+                >BIND</BarButton>
+                <BarButton
+                  :title="`Reset ${row.label} to prototype fallback`"
+                  @click="resetCustomHotkey(row.commandId)"
+                >RESET</BarButton>
+              </BarButtons>
             </div>
           </div>
         </div>
@@ -389,7 +392,7 @@ function resetEveryCustomHotkey(): void {
         <BarDivider />
         <BarLabel>ENTITY HUD:</BarLabel>
         <BarLabel title="How enabled per-type HUD elements behave on selected entities. ALL shows enabled health even when full; OFF suppresses selected bars and names; DMG shows health only when damaged. Names have no fullness, so DMG leaves enabled selected names visible. Hover can still force a health bar for inspection, and unselected entities are unaffected by this selector.">SEL:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.selectionHudMode.options"
             :key="opt.value"
@@ -397,7 +400,7 @@ function resetEveryCustomHotkey(): void {
             :title="`Selection HUD: ${opt.label}.`"
             @click="model.changeSelectionHudMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -612,25 +615,29 @@ function resetEveryCustomHotkey(): void {
         <span class="fps-value camera-vector-value">X {{ fmtCameraDirectionCoordinate(model.cameraDirectionX) }}</span>
         <span class="fps-value camera-vector-value">Y {{ fmtCameraDirectionCoordinate(model.cameraDirectionY) }}</span>
         <span class="fps-value camera-vector-value">Z {{ fmtCameraDirectionCoordinate(model.cameraDirectionZ) }}</span>
-        <BarButton
-          :active="cameraDebugCopyStatus === 'copied'"
-          :title="cameraDebugCopyStatus === 'copied' ? 'Camera position and direction copied' : 'Copy the camera position and direction as a paste-ready XYZ diagnostic'"
-          @click="copyCameraDebugPose"
-        >{{ cameraDebugCopyStatus === 'copied' ? 'COPIED' : cameraDebugCopyStatus === 'failed' ? 'FAILED' : 'COPY' }}</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="cameraDebugCopyStatus === 'copied'"
+            :title="cameraDebugCopyStatus === 'copied' ? 'Camera position and direction copied' : 'Copy the camera position and direction as a paste-ready XYZ diagnostic'"
+            @click="copyCameraDebugPose"
+          >{{ cameraDebugCopyStatus === 'copied' ? 'COPIED' : cameraDebugCopyStatus === 'failed' ? 'FAILED' : 'COPY' }}</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>EVENTS:</BarLabel>
-        <BarButton
-          :active="model.audioSmoothing"
-          title="Smooth one-shot events and turret projectile spawns across snapshot intervals"
-          @click="model.toggleAudioSmoothing"
-        >SMOOTH</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.audioSmoothing"
+            title="Smooth one-shot events and turret projectile spawns across snapshot intervals"
+            @click="model.toggleAudioSmoothing"
+          >SMOOTH</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>LOD:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in LOD_MODE_OPTIONS"
             :key="opt.value"
@@ -638,12 +645,12 @@ function resetEveryCustomHotkey(): void {
             :title="LOD_MODE_TITLES[opt.value]"
             @click="model.changeLodMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel :title="`Antialiasing. MSAA picks the geometric edge pipeline; RES pins render resolution as a percent of the display's native pixel ratio. Both apply live. Current MSAA target: ${model.antialiasSamples > 0 ? `${model.antialiasSamples}x offscreen` : 'canvas default'}; DPR ${fmt4(model.activePixelRatio)} / native ${fmt4(model.nativePixelRatio)}.`">AA MSAA:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in AA_MSAA_MODE_OPTIONS"
             :key="opt.value"
@@ -651,9 +658,9 @@ function resetEveryCustomHotkey(): void {
             :title="AA_MSAA_MODE_TITLES[opt.value]"
             @click="model.changeAaMsaaMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarLabel>RES:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in AA_RESOLUTION_MODE_OPTIONS"
             :key="opt.value"
@@ -661,21 +668,23 @@ function resetEveryCustomHotkey(): void {
             :title="aaResolutionTitle(opt.value)"
             @click="model.changeAaResolutionMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>WALL EDGE:</BarLabel>
-        <BarButton
-          :active="model.terrainSplitWallBoundaryVertices"
-          title="Split D-PLATEAU wall-edge render vertices so wall and flat triangles bake normals, texture masks, and light from their own side of the edge."
-          @click="model.toggleTerrainSplitWallBoundaryVertices"
-        >SPLIT</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.terrainSplitWallBoundaryVertices"
+            title="Split D-PLATEAU wall-edge render vertices so wall and flat triangles bake normals, texture masks, and light from their own side of the edge."
+            @click="model.toggleTerrainSplitWallBoundaryVertices"
+          >SPLIT</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>TEXTURE SMOOTH:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainTextureSmoothing.options"
             :key="opt"
@@ -685,17 +694,19 @@ function resetEveryCustomHotkey(): void {
               : `Terrain texture smoothing passes: ${opt}`"
             @click="model.applyTerrainTextureSmoothing(opt)"
           >{{ opt }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.terrainTextureSmoothAcrossWallBoundary"
-          title="Allow terrain texture smoothing to cross D-PLATEAU wall/non-wall triangle boundaries. Off keeps the two triangle classes separate."
-          @click="model.toggleTerrainTextureSmoothAcrossWallBoundary"
-        >CROSS WALL</BarButton>
+        </BarButtons>
+        <BarButtons>
+          <BarButton
+            :active="model.terrainTextureSmoothAcrossWallBoundary"
+            title="Allow terrain texture smoothing to cross D-PLATEAU wall/non-wall triangle boundaries. Off keeps the two triangle classes separate."
+            @click="model.toggleTerrainTextureSmoothAcrossWallBoundary"
+          >CROSS WALL</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>LIGHT SMOOTH:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainLightSmoothing.options"
             :key="opt"
@@ -705,93 +716,97 @@ function resetEveryCustomHotkey(): void {
               : `Precomputed terrain-light smoothing passes on rebuild: ${opt}. The field is displayed only when CLIENT BAKED LIGHT is on.`"
             @click="model.applyTerrainLightSmoothing(opt)"
           >{{ opt }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.terrainLightSmoothAcrossWallBoundary"
-          title="Allow precomputed terrain-light smoothing to cross D-PLATEAU wall/non-wall triangle boundaries when rebuilding. Off keeps the two triangle classes separate; CLIENT BAKED LIGHT controls whether the resulting field is displayed."
-          @click="model.toggleTerrainLightSmoothAcrossWallBoundary"
-        >CROSS WALL</BarButton>
+        </BarButtons>
+        <BarButtons>
+          <BarButton
+            :active="model.terrainLightSmoothAcrossWallBoundary"
+            title="Allow precomputed terrain-light smoothing to cross D-PLATEAU wall/non-wall triangle boundaries when rebuilding. Off keeps the two triangle classes separate; CLIENT BAKED LIGHT controls whether the resulting field is displayed."
+            @click="model.toggleTerrainLightSmoothAcrossWallBoundary"
+          >CROSS WALL</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>DEBUG:</BarLabel>
-        <BarButton
-          :active="model.burnMarks"
-          title="Draw beam, laser, and dgun scorch trails on the ground"
-          @click="model.toggleBurnMarks"
-        >BURN</BarButton>
-        <BarButton
-          :active="model.windParticles"
-          title="Draw ambient wind particles drifting with the authoritative wind"
-          @click="model.toggleWindParticles"
-        >WIND</BarButton>
-        <BarButton
-          :active="model.locomotionMarks"
-          title="Draw wheel, tread, and footstep prints from unit movement"
-          @click="model.toggleLocomotionMarks"
-        >LOCO</BarButton>
-        <BarButton
-          :active="model.teamTrim"
-          title="Draw the extra TEAM-colored ornamentation bolted onto entities (a unit's fin, a building's roof band). Identity colors are unaffected either way: bodies stay player-colored and turret accents stay team-colored, since those recolor existing parts instead of adding geometry."
-          @click="model.toggleTeamTrim"
-        >TRIM</BarButton>
-        <BarButton
-          :active="model.surfaceTexture"
-          title="Draw every texture in the world, or none of them: entity trim-sheet charts and substance grain, terrain ground/rock detail and surface fields, ore detail and its edge grime, plateau wall wear, tree and grass maps with their weathering, and the sky panorama. Off leaves every surface its flat authored base color — a true A/B, not a quality tier."
-          @click="model.toggleSurfaceTexture"
-        >TEX</BarButton>
-        <BarButton
-          :active="model.smokeTrails"
-          title="Draw smoke-puff trails behind thrust-powered projectiles"
-          @click="model.toggleSmokeTrails"
-        >SMOKE</BarButton>
-        <BarButton
-          :active="model.smokeSoftEdges"
-          title="Smoke-puff edge style — on: soft fog-style blobs; off: legacy hard-edged spheres"
-          @click="model.toggleSmokeSoftEdges"
-        >SOFT</BarButton>
-        <BarButton
-          :active="model.forceFieldsVisible"
-          title="Show local force-field surfaces and impact flashes. Shield interception remains active when hidden."
-          @click="model.toggleForceFieldsVisible"
-        >FIELDS</BarButton>
-        <BarButton
-          :active="model.fogShade"
-          title="Shade currently unseen terrain and environment props with a world-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
-          @click="model.toggleFogShade"
-        >SHADE</BarButton>
-        <BarButton
-          :active="model.materialExplosions"
-          title="Break textured body parts apart on death. Every unit still produces its core fire blast when this detail is off."
-          @click="model.toggleMaterialExplosions"
-        >MATEXP</BarButton>
-        <BarButton
-          :active="model.legsRadiusToggle"
-          title="Show the authored chopped snap envelope: cyan foot spheres, pink attachment-ground chopping spheres, yellow snap-ray origin dots, and first-hit rays following each dot's own velocity."
-          @click="model.toggleLegsRadius"
-        >LEG RAD</BarButton>
-        <BarButton
-          :active="model.legsReachToggle"
-          title="Show each leg's amber hip-centered mechanical reach sphere and the center-through-attachment ray to full extension."
-          @click="model.toggleLegsReach"
-        >LEG REACH</BarButton>
-        <BarButton
-          :active="model.triangleDebug"
-          title="TRIS - debug-color every terrain mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
-          @click="model.toggleTriangleDebug"
-        >TRIS</BarButton>
-        <BarButton
-          :active="model.waterTriangleDebug"
-          title="WATER TRIS - highlight every triangle in the rendered water surface and its floating-square perimeter curtains"
-          @click="model.toggleWaterTriangleDebug"
-        >WATER TRIS</BarButton>
-        <BarButton
-          :active="model.wallTriangleDebug"
-          title="WALL TRIS - show only terrain triangles classified as D-PLATEAU wall faces"
-          @click="model.toggleWallTriangleDebug"
-        >WALL TRIS</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.burnMarks"
+            title="Draw beam, laser, and dgun scorch trails on the ground"
+            @click="model.toggleBurnMarks"
+          >BURN</BarButton>
+          <BarButton
+            :active="model.windParticles"
+            title="Draw ambient wind particles drifting with the authoritative wind"
+            @click="model.toggleWindParticles"
+          >WIND</BarButton>
+          <BarButton
+            :active="model.locomotionMarks"
+            title="Draw wheel, tread, and footstep prints from unit movement"
+            @click="model.toggleLocomotionMarks"
+          >LOCO</BarButton>
+          <BarButton
+            :active="model.teamTrim"
+            title="Draw the extra TEAM-colored ornamentation bolted onto entities (a unit's fin, a building's roof band). Identity colors are unaffected either way: bodies stay player-colored and turret accents stay team-colored, since those recolor existing parts instead of adding geometry."
+            @click="model.toggleTeamTrim"
+          >TRIM</BarButton>
+          <BarButton
+            :active="model.surfaceTexture"
+            title="Draw every texture in the world, or none of them: entity trim-sheet charts and substance grain, terrain ground/rock detail and surface fields, ore detail and its edge grime, plateau wall wear, tree and grass maps with their weathering, and the sky panorama. Off leaves every surface its flat authored base color — a true A/B, not a quality tier."
+            @click="model.toggleSurfaceTexture"
+          >TEX</BarButton>
+          <BarButton
+            :active="model.smokeTrails"
+            title="Draw smoke-puff trails behind thrust-powered projectiles"
+            @click="model.toggleSmokeTrails"
+          >SMOKE</BarButton>
+          <BarButton
+            :active="model.smokeSoftEdges"
+            title="Smoke-puff edge style — on: soft fog-style blobs; off: legacy hard-edged spheres"
+            @click="model.toggleSmokeSoftEdges"
+          >SOFT</BarButton>
+          <BarButton
+            :active="model.forceFieldsVisible"
+            title="Show local force-field surfaces and impact flashes. Shield interception remains active when hidden."
+            @click="model.toggleForceFieldsVisible"
+          >FIELDS</BarButton>
+          <BarButton
+            :active="model.fogShade"
+            title="Shade currently unseen terrain and environment props with a world-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
+            @click="model.toggleFogShade"
+          >SHADE</BarButton>
+          <BarButton
+            :active="model.materialExplosions"
+            title="Break textured body parts apart on death. Every unit still produces its core fire blast when this detail is off."
+            @click="model.toggleMaterialExplosions"
+          >MATEXP</BarButton>
+          <BarButton
+            :active="model.legsRadiusToggle"
+            title="Show the authored chopped snap envelope: cyan foot spheres, pink attachment-ground chopping spheres, yellow snap-ray origin dots, and first-hit rays following each dot's own velocity."
+            @click="model.toggleLegsRadius"
+          >LEG RAD</BarButton>
+          <BarButton
+            :active="model.legsReachToggle"
+            title="Show each leg's amber hip-centered mechanical reach sphere and the center-through-attachment ray to full extension."
+            @click="model.toggleLegsReach"
+          >LEG REACH</BarButton>
+          <BarButton
+            :active="model.triangleDebug"
+            title="TRIS - debug-color every terrain mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
+            @click="model.toggleTriangleDebug"
+          >TRIS</BarButton>
+          <BarButton
+            :active="model.waterTriangleDebug"
+            title="WATER TRIS - highlight every triangle in the rendered water surface and its floating-square perimeter curtains"
+            @click="model.toggleWaterTriangleDebug"
+          >WATER TRIS</BarButton>
+          <BarButton
+            :active="model.wallTriangleDebug"
+            title="WALL TRIS - show only terrain triangles classified as D-PLATEAU wall faces"
+            @click="model.toggleWallTriangleDebug"
+          >WALL TRIS</BarButton>
+        </BarButtons>
         <BarLabel title="Exclusive whole-map build-square availability view. All colors are projected on the actual terrain, including the seabed.">BUILD:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.buildGridDebug.options"
             :key="opt.value"
@@ -799,42 +814,44 @@ function resetEveryCustomHotkey(): void {
             :title="BUILD_GRID_DEBUG_MODE_TITLES[opt.value]"
             @click="model.changeBuildGridDebugMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.pathingHierarchyDebug"
-          title="HIER - show level-1 pathfinding chunks: cyan boundaries, alternating chunk tint, and orange nominal center nodes"
-          @click="model.togglePathingHierarchyDebug"
-        >HIER</BarButton>
-        <BarButton
-          :active="model.airLiftProbeDebug"
-          title="PROBES - show authoritative force-tick lift probes; brown lines are active solid/support distances and blue lines are active exposed-water distances"
-          @click="model.toggleAirLiftProbeDebug"
-        >PROBES</BarButton>
-        <BarButton
-          :active="model.zoomPointsDebug"
-          title="ZOOM POINTS - show the exact configured terrain neighborhood; red marks the point currently selected by MIN distance mode"
-          @click="model.toggleZoomPointsDebug"
-        >ZOOM POINTS</BarButton>
-        <BarButton
-          :active="model.metalMap"
-          title="METAL - show metal-producing build cells without the rest of the buildability grid"
-          @click="model.toggleMetalMap"
-        >METAL</BarButton>
-        <BarButton
-          :active="model.elevationMap"
-          title="ELEV - colorize the terrain by elevation"
-          @click="model.toggleElevationMap"
-        >ELEV</BarButton>
-        <BarButton
-          :active="model.pathingMap"
-          title="WATER - show cells blocked by water plus the configured shoreline buffer"
-          @click="model.togglePathingMap"
-        >WATER</BarButton>
+        </BarButtons>
+        <BarButtons>
+          <BarButton
+            :active="model.pathingHierarchyDebug"
+            title="HIER - show level-1 pathfinding chunks: cyan boundaries, alternating chunk tint, and orange nominal center nodes"
+            @click="model.togglePathingHierarchyDebug"
+          >HIER</BarButton>
+          <BarButton
+            :active="model.airLiftProbeDebug"
+            title="PROBES - show authoritative force-tick lift probes; brown lines are active solid/support distances and blue lines are active exposed-water distances"
+            @click="model.toggleAirLiftProbeDebug"
+          >PROBES</BarButton>
+          <BarButton
+            :active="model.zoomPointsDebug"
+            title="ZOOM POINTS - show the exact configured terrain neighborhood; red marks the point currently selected by MIN distance mode"
+            @click="model.toggleZoomPointsDebug"
+          >ZOOM POINTS</BarButton>
+          <BarButton
+            :active="model.metalMap"
+            title="METAL - show metal-producing build cells without the rest of the buildability grid"
+            @click="model.toggleMetalMap"
+          >METAL</BarButton>
+          <BarButton
+            :active="model.elevationMap"
+            title="ELEV - colorize the terrain by elevation"
+            @click="model.toggleElevationMap"
+          >ELEV</BarButton>
+          <BarButton
+            :active="model.pathingMap"
+            title="WATER - show cells blocked by water plus the configured shoreline buffer"
+            @click="model.togglePathingMap"
+          >WATER</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>PATH:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in PATHING_DEBUG_MODE_OPTIONS"
             :key="opt.value"
@@ -842,8 +859,8 @@ function resetEveryCustomHotkey(): void {
             :title="opt.title"
             @click="model.changePathingDebugMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="opt in PATHING_DEBUG_UNIT_OPTIONS"
             :key="opt.value"
@@ -851,12 +868,12 @@ function resetEveryCustomHotkey(): void {
             :title="opt.title"
             @click="model.changePathingDebugUnit(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>RENDER:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.render.options"
             :key="opt.value"
@@ -870,12 +887,12 @@ function resetEveryCustomHotkey(): void {
             "
             @click="model.changeRenderMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Water/map boundary presentation. INF extends water and perimeter terrain to a fake horizon; SQUARE cuts off the real map and renders water as a shallow cuboid; SEA uses the square cuboid with a solid dark-blue sea background.">WATER EDGE:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.waterBoundaryMode.options"
             :key="opt.value"
@@ -889,12 +906,12 @@ function resetEveryCustomHotkey(): void {
             "
             @click="model.changeWaterBoundaryMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="How an enemy crosses the edge of your team's vision. Presentation only: what the server reveals never changes. TIME fades the last drawn model/glyph/blip over the visionConfig durations, coasting on its last velocity. DIST makes alpha a function of distance to the nearest friendly sensor edge (opaque BAND world units inside the edge, transparent at it) with no clocks. BOTH multiplies the two.">VISION FADE:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.visionFadeMode.options"
             :key="opt.value"
@@ -908,9 +925,9 @@ function resetEveryCustomHotkey(): void {
             "
             @click="model.changeVisionFadeMode(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarLabel title="Width (world units) of the distance-fade band inside the sight edge. The radar/sonar band is three times this, matching the fog shade's 64/192 edge softness.">BAND:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.visionFadeBand.options"
             :key="opt.value"
@@ -918,18 +935,20 @@ function resetEveryCustomHotkey(): void {
             :title="`Distance fade band: opaque ${opt.value} world units inside the sight edge (${opt.value * 3} inside the radar/sonar edge)`"
             @click="model.changeVisionFadeBand(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>SHADOW:</BarLabel>
-        <BarButton
-          :active="model.entityShadows"
-          title="Project the actual silhouettes of units, buildings, and solid environment objects onto the terrain from the sun. Off skips the directional depth pass."
-          @click="model.toggleEntityShadows"
-        >ON</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.entityShadows"
+            title="Project the actual silhouettes of units, buildings, and solid environment objects onto the terrain from the sun. Off skips the directional depth pass."
+            @click="model.toggleEntityShadows"
+          >ON</BarButton>
+        </BarButtons>
         <BarLabel>DARK:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.entityShadowDarkness.options"
             :key="opt.value"
@@ -939,21 +958,23 @@ function resetEveryCustomHotkey(): void {
               : `Apply ${opt.value}% of the sampled directional silhouette shadow. This changes live and uses the same shadow-map term on biome grass and metal.`"
             @click="model.changeEntityShadowDarkness(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>BAKED:</BarLabel>
-        <BarButton
-          :active="model.terrainBakedLighting"
-          title="Apply the optional terrain-only sun/self-occlusion shade computed when terrain geometry was built. The data is already resident, so this toggles live without rebuilding the scene."
-          @click="model.toggleTerrainBakedLighting"
-        >LIGHT</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.terrainBakedLighting"
+            title="Apply the optional terrain-only sun/self-occlusion shade computed when terrain geometry was built. The data is already resident, so this toggles live without rebuilding the scene."
+            @click="model.toggleTerrainBakedLighting"
+          >LIGHT</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ENV:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.environmentLight.options"
             :key="opt.value"
@@ -961,12 +982,12 @@ function resetEveryCustomHotkey(): void {
             :title="`RoomEnvironment image-based fill at ${opt.value}% of its authored intensity. Reaches Three lit materials, including terrain and vegetation, and is not removed by directional shadows.`"
             @click="model.changeEnvironmentLight(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>AMB:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.ambientLight.options"
             :key="opt.value"
@@ -974,12 +995,12 @@ function resetEveryCustomHotkey(): void {
             :title="`AmbientLight at ${opt.value}% of the authored intensity. Flat, unshadowed fill — raising it reduces directional contrast.`"
             @click="model.changeAmbientLight(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>SUN:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.directionalLight.options"
             :key="opt.value"
@@ -987,12 +1008,12 @@ function resetEveryCustomHotkey(): void {
             :title="`Live DirectionalLight at ${opt.value}% of the authored intensity. Reaches correctly oriented lit materials, including terrain, units, and buildings; this is the only lighting term removed by the directional silhouette shadow map. Unlit effects ignore it.`"
             @click="model.changeDirectionalLight(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>SKY:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.skyLight.options"
             :key="opt.value"
@@ -1000,12 +1021,12 @@ function resetEveryCustomHotkey(): void {
             :title="`Sky brightness at ${opt.value}%, covering both sky paths: three's scene background and the parallax panorama layers. Which one you see depends on the preset, so they share one control. Pixels only — the sky contributes no light to surfaces.`"
             @click="model.changeSkyLight(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>EXPO:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.exposure.options"
             :key="opt.value"
@@ -1013,12 +1034,12 @@ function resetEveryCustomHotkey(): void {
             :title="`Tone-mapping exposure at ${opt.value}%. Built-in materials respond when the runtime enables tone mapping; explicitly wired raw shaders use the same value directly. Mobile-class profiles disable Three's tone-mapping stage.`"
             @click="model.changeExposure(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>VOL:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in CLIENT_CONFIG.masterVolume.options"
             :key="opt.value"
@@ -1026,17 +1047,19 @@ function resetEveryCustomHotkey(): void {
             :title="`Set master volume to ${opt.value}%`"
             @click="model.changeMasterVolume(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>SOUNDS:</BarLabel>
-        <BarButton
-          :active="model.allSoundsActive"
-          title="Toggle all sound categories on/off"
-          @click="model.toggleAllSounds"
-        >ALL</BarButton>
-        <BarButtonGroup>
+        <BarButtons>
+          <BarButton
+            :active="model.allSoundsActive"
+            title="Toggle all sound categories on/off"
+            @click="model.toggleAllSounds"
+          >ALL</BarButton>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="cat in model.sfxCategories"
             :key="cat"
@@ -1044,26 +1067,30 @@ function resetEveryCustomHotkey(): void {
             :title="model.soundTooltips[cat]"
             @click="model.toggleSoundCategory(cat)"
           >{{ model.soundLabels[cat] }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="AUDIO_ENABLED">
         <BarDivider />
         <BarLabel>MUSIC:</BarLabel>
-        <BarButton
-          :active="model.soundToggles.music"
-          :title="model.soundTooltips.music"
-          @click="model.toggleSoundCategory('music')"
-        >{{ model.soundToggles.music ? 'ON' : 'OFF' }}</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.soundToggles.music"
+            :title="model.soundTooltips.music"
+            @click="model.toggleSoundCategory('music')"
+          >{{ model.soundToggles.music ? 'ON' : 'OFF' }}</BarButton>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>TURR CIR:</BarLabel>
-        <BarButton
-          :active="model.allRangesActive"
-          title="Toggle every 2D turret/build circle diagnostic on/off for selected entities"
-          @click="model.toggleAllRanges"
-        >ALL</BarButton>
-        <BarButtonGroup>
+        <BarButtons>
+          <BarButton
+            :active="model.allRangesActive"
+            title="Toggle every 2D turret/build circle diagnostic on/off for selected entities"
+            @click="model.toggleAllRanges"
+          >ALL</BarButton>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             :active="model.rangeToggles.trackAcquire"
             title="Show tracking acquire circle (2D ground-plane start tracking target range)"
@@ -1099,17 +1126,19 @@ function resetEveryCustomHotkey(): void {
             title="Show build circle (2D ground-plane builder range)"
             @click="model.toggleRange('build')"
           >BLD</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>VOLUMES:</BarLabel>
-        <BarButton
-          :active="model.allVolumesActive"
-          title="Toggle every 3D volume diagnostic on/off. Entity-bound volumes are drawn only for selected entities; each button still uses the concept's true authored shape."
-          @click="model.toggleAllVolumes"
-        >ALL</BarButton>
-        <BarButtonGroup>
+        <BarButtons>
+          <BarButton
+            :active="model.allVolumesActive"
+            title="Toggle every 3D volume diagnostic on/off. Entity-bound volumes are drawn only for selected entities; each button still uses the concept's true authored shape."
+            @click="model.toggleAllVolumes"
+          >ALL</BarButton>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             :active="model.volumeToggles.selection"
             title="SELECTION — on selected entities, draw the exact volume the mouse picker ray-tests. Units: body sphere (1.18 × radius, min 12). Buildings/towers: upright footprint × visual-height box. Hovering fabricator: its torus ring (the open middle does not pick)."
@@ -1140,12 +1169,12 @@ function resetEveryCustomHotkey(): void {
             title="TURRET LOCK-ON — each selected entity's real 3D tracking and engagement range shells, centered on its authoritative AimFrom mounts. Colors match TURR CIR. Sphere and cylinder modes follow the authored rangeVolume; arrow-tipped ends continue without bound, and water-capped volumes stop at the water surface."
             @click="model.toggleVolume('turretLockOn')"
           >TGT</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ANCHOR:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="slot in CAMERA_ANCHOR_SLOTS"
             :key="`save-${slot}`"
@@ -1153,8 +1182,8 @@ function resetEveryCustomHotkey(): void {
             :title="`Save the current camera target, distance, yaw, and pitch in in-memory anchor ${slot + 1}`"
             @click="model.setCameraAnchor(slot)"
           >S{{ slot + 1 }}</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="slot in CAMERA_ANCHOR_SLOTS"
             :key="`focus-${slot}`"
@@ -1162,64 +1191,70 @@ function resetEveryCustomHotkey(): void {
             :title="`Restore in-memory camera anchor ${slot + 1}; does nothing until that slot has been saved`"
             @click="model.focusCameraAnchor(slot)"
           >{{ slot + 1 }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
         <BarLabel>SCREEN:</BarLabel>
-        <BarButton
-          :active="model.optionsMenuOpen"
-          :title="`Open options menu (${commandHotkeyLabel('ui.optionsMenu', model.commandHotkeyPreset)})`"
-          @click="model.toggleOptionsMenu"
-        >OPTS</BarButton>
-        <BarButton
-          :active="false"
-          title="Save the current game canvas as a PNG screenshot"
-          @click="model.captureScreenshot"
-        >SHOT</BarButton>
-        <BarButton
-          :active="model.uiChromeVisible"
-          :title="model.uiChromeVisible ? 'Hide game UI chrome' : 'Show game UI chrome'"
-          @click="model.toggleUiChrome"
-        >UI</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.optionsMenuOpen"
+            :title="`Open options menu (${commandHotkeyLabel('ui.optionsMenu', model.commandHotkeyPreset)})`"
+            @click="model.toggleOptionsMenu"
+          >OPTS</BarButton>
+          <BarButton
+            :active="false"
+            title="Save the current game canvas as a PNG screenshot"
+            @click="model.captureScreenshot"
+          >SHOT</BarButton>
+          <BarButton
+            :active="model.uiChromeVisible"
+            :title="model.uiChromeVisible ? 'Hide game UI chrome' : 'Show game UI chrome'"
+            @click="model.toggleUiChrome"
+          >UI</BarButton>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
         <BarLabel>SPEED:</BarLabel>
-        <BarButton
-          :active="false"
-          title="Pause the lockstep simulation"
-          @click="model.setGamePaused(true)"
-        >PAUSE</BarButton>
-        <BarButton
-          :active="false"
-          title="Resume the lockstep simulation"
-          @click="model.setGamePaused(false)"
-        >PLAY</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="false"
+            title="Pause the lockstep simulation"
+            @click="model.setGamePaused(true)"
+          >PAUSE</BarButton>
+          <BarButton
+            :active="false"
+            title="Resume the lockstep simulation"
+            @click="model.setGamePaused(false)"
+          >PLAY</BarButton>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
         <BarLabel>MAP:</BarLabel>
-        <BarButton
-          :active="false"
-          title="Switch to an overhead map overview"
-          @click="model.showMapOverview"
-        >OVR</BarButton>
-        <BarButton
-          :active="model.mapDetailsVisible"
-          title="Show map details"
-          @click="model.toggleMapDetails"
-        >INFO</BarButton>
-        <BarButton
-          :active="false"
-          title="Move the camera to the latest ping or scanner marker"
-          @click="model.goToLastPing"
-        >PING</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="false"
+            title="Switch to an overhead map overview"
+            @click="model.showMapOverview"
+          >OVR</BarButton>
+          <BarButton
+            :active="model.mapDetailsVisible"
+            title="Show map details"
+            @click="model.toggleMapDetails"
+          >INFO</BarButton>
+          <BarButton
+            :active="false"
+            title="Move the camera to the latest ping or scanner marker"
+            @click="model.goToLastPing"
+          >PING</BarButton>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
         <BarLabel title="Camera follow for a single selected unit. Only active when exactly one unit is selected; follow movement shares the configured camera smoothing.">FOLLOW:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             :active="model.cameraFollowMode === 'free'"
             title="Camera is controlled only by the mouse - default behavior"
@@ -1235,7 +1270,7 @@ function resetEveryCustomHotkey(): void {
             title="Keep the camera behind the selected unit, looking down its forward axis, preserving the current distance and pitch"
             @click="model.setCameraFollowMode('follow-behind')"
           >BEHIND</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
     </div>
@@ -1278,7 +1313,7 @@ function resetEveryCustomHotkey(): void {
 
 .hotkey-editor-row {
   display: grid;
-  grid-template-columns: minmax(116px, 1fr) 72px 44px 52px;
+  grid-template-columns: minmax(116px, 1fr) 72px auto;
   align-items: center;
   gap: 4px;
   min-height: 24px;
@@ -1309,25 +1344,6 @@ function resetEveryCustomHotkey(): void {
   text-align: center;
 }
 
-.hotkey-row-btn {
-  min-width: 0;
-  height: 20px;
-  padding: 2px 5px;
-  border: 1px solid rgba(130, 140, 152, 0.45);
-  border-radius: 2px;
-  background: rgba(58, 62, 70, 0.95);
-  color: #d8dde5;
-  font: inherit;
-  font-size: 10px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.hotkey-row-btn:hover,
-.hotkey-row-btn:focus-visible {
-  border-color: var(--bar-active-border);
-  color: #fff;
-}
 
 @media (max-width: 720px) {
   .hotkey-editor-grid {

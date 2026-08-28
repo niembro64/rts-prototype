@@ -1,15 +1,19 @@
 /* Canonical styling for the bar-control component family:
  *
- *   .control-group   — wrapper for a label + button-group pair
+ *   .control-group   — wrapper for a label + button-run pair
  *   .control-label   — uppercase gray label text
- *   .bar-button-group — wrapping sequence of connected buttons
+ *   .bar-buttons     — THE one button group: a wrapping run of
+ *                      separate square buttons. Every button in the
+ *                      bars sits inside one, even a run of one.
  *   .control-btn     — individual button (with .active modifier)
  *
  * One source of truth so the bottom bars (BATTLE / SERVER / CLIENT)
  * and the GAME LOBBY's CENTER / DIVIDERS pickers render identically.
- * Each Vue wrapper component (BarLabel / BarButton / BarButtonGroup
+ * Each Vue wrapper component (BarLabel / BarButton / BarButtons
  * / BarControlGroup) renders the SAME class names this file styles,
  * so every consumer of the shared components stays in lockstep.
+ * The old connected-pill button group (fused borders, rounded end
+ * caps) is gone — do not reintroduce it.
  *
  * Active-state colors come from CSS custom properties — the bottom
  * bars override them per-bar via inline style binding (BAR_THEMES);
@@ -43,30 +47,20 @@
   font-family: monospace;
 }
 
-.bar-button-group {
+.bar-buttons {
   display: flex;
   flex: 0 1 auto;
   flex-wrap: wrap;
+  gap: 2px;
   min-width: 0;
   max-width: 100%;
 }
 
-.bar-button-group .control-btn {
+.bar-buttons .control-btn {
   flex: 0 0 auto;
-  border-radius: 0;
-  margin-left: -1px;
   text-align: center;
   overflow: visible;
   white-space: nowrap;
-}
-
-.bar-button-group .control-btn:first-child {
-  border-radius: 3px 0 0 3px;
-  margin-left: 0;
-}
-
-.bar-button-group .control-btn:last-child {
-  border-radius: 0 3px 3px 0;
 }
 
 /* Three-state design — every `.control-btn` lands in exactly
@@ -86,7 +80,7 @@
   padding: 3px 6px;
   background: rgba(60, 60, 60, 0.8);
   border: 1px solid #555;
-  border-radius: 3px;
+  border-radius: 0;
   color: #556;
   font-family: monospace;
   font-size: 10px;
@@ -196,11 +190,6 @@
     padding: 4px 8px;
   }
 
-  .control-bar > .bar-info {
-    flex-direction: row;
-    justify-content: center;
-  }
-
   .control-bar > .bar-controls {
     justify-content: center;
   }
@@ -208,15 +197,6 @@
 
 .control-bar:not(:last-child) {
   border-bottom: none;
-}
-
-.bar-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 .bar-controls {
@@ -234,12 +214,6 @@
   letter-spacing: 1px;
   text-align: center;
   min-width: 105px;
-}
-
-.client-power-button {
-  width: 100%;
-  min-width: 105px;
-  padding-block: 2px;
 }
 
 .bar-label-text,

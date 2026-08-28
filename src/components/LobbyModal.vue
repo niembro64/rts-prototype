@@ -5,7 +5,7 @@ import { resolveLobbyTeamGroups } from '../game/lobby/lobbyIdentity';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
-import BarButtonGroup from './BarButtonGroup.vue';
+import BarButtons from './BarButtons.vue';
 import BarButton from './BarButton.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
@@ -1325,21 +1325,24 @@ const terrainSectionVars = computed(() =>
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
           >
-            <div class="bar-info">
-              <BarButton
-                :active="true"
-                class="bar-label"
-                :title="isHost ? 'Click to reset every battle setting (units, cap, terrain, FF, fog) to its default value' : 'Only the host can change battle settings'"
-                @click="pickResetDefaults"
-              >
-                <span class="bar-label-text">REAL BATTLE</span
-                ><span class="bar-label-hover">DEFAULTS</span>
-              </BarButton>
-            </div>
             <div class="bar-controls">
               <BarControlGroup>
+                <BarButtons>
+                  <BarButton
+                    :active="true"
+                    class="bar-label"
+                    :title="isHost ? 'Click to reset every battle setting (units, cap, terrain, FF, fog) to its default value' : 'Only the host can change battle settings'"
+                    @click="pickResetDefaults"
+                  >
+                    <span class="bar-label-text">REAL BATTLE</span
+                    ><span class="bar-label-hover">DEFAULTS</span>
+                  </BarButton>
+                </BarButtons>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
                 <BarLabel>PRESETS:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="preset in presets"
                     :key="preset.id"
@@ -1347,12 +1350,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Apply preset: ${preset.name}` : 'Only the host can change battle settings'"
                     @click="pickPreset(preset)"
                   >{{ preset.name }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>WIDTH:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in mapWidthOptions"
                     :key="opt.label"
@@ -1360,12 +1363,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set map width to ${opt.label} land cells` : 'Only the host can change terrain'"
                     @click="pickMapWidthLandCells(opt.valueLandCells)"
                   >{{ opt.label }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>LENGTH:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in mapLengthOptions"
                     :key="opt.label"
@@ -1373,12 +1376,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set map length to ${opt.label} land cells` : 'Only the host can change terrain'"
                     @click="pickMapLengthLandCells(opt.valueLandCells)"
                   >{{ opt.label }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>CENTER:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in centerMagnitudeOptions"
                     :key="opt"
@@ -1386,12 +1389,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set the centre dome altitude to ${opt}` : 'Only the host can change terrain'"
                     @click="pickCenterMagnitude(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>RING:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in ringMagnitudeOptions"
                     :key="opt"
@@ -1399,12 +1402,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set the ring crest altitude to ${opt}` : 'Only the host can change terrain'"
                     @click="pickRingMagnitude(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>DIVIDERS:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in dividersMagnitudeOptions"
                     :key="opt"
@@ -1412,12 +1415,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set the team-separator ridge altitude to ${opt}` : 'Only the host can change terrain'"
                     @click="pickDividersMagnitude(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>PERIMETER:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in perimeterMagnitudeOptions"
                     :key="opt"
@@ -1425,12 +1428,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set the map perimeter altitude to ${opt}` : 'Only the host can change terrain'"
                     @click="pickPerimeterMagnitude(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>PRECEDENCE:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in terrainPrecedenceOptions"
                     :key="opt"
@@ -1442,12 +1445,12 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickTerrainPrecedence(opt)"
                   >{{ opt === 'dividers-precedence' ? 'DIVIDERS' : 'PERIMETER' }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>D-PLATEAU:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in terrainDTerrainOptions"
                     :key="opt"
@@ -1459,12 +1462,12 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickTerrainDTerrain(opt)"
                   >{{ opt === 0 ? 'NONE' : opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>PLATEAU WALL (DEG):</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in plateauWallSlopeDegreesOptions"
                     :key="opt"
@@ -1474,12 +1477,12 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickPlateauWallSlopeDegrees(opt)"
                   >{{ opt }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>D-DEPOSIT:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in metalDepositStepOptions"
                     :key="opt"
@@ -1487,12 +1490,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Signed metal-extractor pad altitude step: ${opt} (negative lowers authored levels)` : 'Only the host can change terrain'"
                     @click="pickMetalDepositStep(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>TERRAIN DETAIL:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in terrainDetailOptions"
                     :key="opt"
@@ -1504,12 +1507,12 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickTerrainDetail(opt)"
                   >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK (HZ):</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in simulationTickRateOptions"
                     :key="opt"
@@ -1517,7 +1520,7 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second` : 'Only the host can change simulation cadence'"
                     @click="pickSimulationTickRate(opt)"
                   >{{ opt }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <!-- Real-battle config groups. These were previously editable
                    mid-battle on the bottom BATTLE bar; that bar is now
@@ -1526,12 +1529,14 @@ const terrainSectionVars = computed(() =>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>UNITS:</BarLabel>
-                <BarButton
-                  :active="allUnitsActive"
-                  :title="isHost ? 'Toggle all unit blueprints on/off' : 'Only the host can change battle settings'"
-                  @click="pickToggleAllUnits"
-                >ALL</BarButton>
-                <BarButtonGroup>
+                <BarButtons>
+                  <BarButton
+                    :active="allUnitsActive"
+                    :title="isHost ? 'Toggle all unit blueprints on/off' : 'Only the host can change battle settings'"
+                    @click="pickToggleAllUnits"
+                  >ALL</BarButton>
+                </BarButtons>
+                <BarButtons>
                   <BarButton
                     v-for="ut in rosterUnitBlueprintIds"
                     :key="ut"
@@ -1539,17 +1544,19 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
                     @click="pickToggleUnit(ut)"
                   >{{ unitShortName(ut) }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>BUILDINGS:</BarLabel>
-                <BarButton
-                  :active="allBuildingsActive"
-                  :title="isHost ? 'Toggle all building blueprints on/off' : 'Only the host can change battle settings'"
-                  @click="pickToggleAllBuildings"
-                >ALL</BarButton>
-                <BarButtonGroup>
+                <BarButtons>
+                  <BarButton
+                    :active="allBuildingsActive"
+                    :title="isHost ? 'Toggle all building blueprints on/off' : 'Only the host can change battle settings'"
+                    @click="pickToggleAllBuildings"
+                  >ALL</BarButton>
+                </BarButtons>
+                <BarButtons>
                   <BarButton
                     v-for="bt in rosterBuildingBlueprintIds"
                     :key="bt"
@@ -1557,12 +1564,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Toggle ${bt}` : 'Only the host can change battle settings'"
                     @click="pickToggleBuilding(bt)"
                   >{{ buildingShortName(bt) }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel title="How many sides the map is carved into. A team left empty still gets its own slice, deposits and spawn arc — it just has no commander on it.">TEAMS:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in allyTeamCountOptions"
                     :key="opt"
@@ -1570,12 +1577,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Carve the map into ${opt} team slice(s)` : 'Only the host can change battle settings'"
                     @click="pickAllyTeamCount(opt)"
                   >{{ opt }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel :title="`Total entities (units + buildings) for the match, split evenly across the ${occupiedAllyTeamCount} team(s) that hold seats`">ENTITY CAP:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in capOptions"
                     :key="opt"
@@ -1583,12 +1590,12 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Max ${opt.toLocaleString()} entities total — ${Math.floor(opt / occupiedAllyTeamCount).toLocaleString()} per team across ${occupiedAllyTeamCount} team(s)` : 'Only the host can change battle settings'"
                     @click="pickUnitCap(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
                 <BarLabel>CONVERTER TAX:</BarLabel>
-                <BarButtonGroup>
+                <BarButtons>
                   <BarButton
                     v-for="opt in converterTaxOptions"
                     :key="opt"
@@ -1596,7 +1603,7 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Set resource converter tax to ${opt.toFixed(1)}` : 'Only the host can change battle settings'"
                     @click="pickConverterTax(opt)"
                   >{{ opt.toFixed(1) }}</BarButton>
-                </BarButtonGroup>
+                </BarButtons>
               </BarControlGroup>
             </div>
           </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BarButton from './BarButton.vue';
+import BarButtons from './BarButtons.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
@@ -30,17 +31,19 @@ function cpuTitle(rateHz: number): string {
     :class="{ 'bar-readonly': model.isReadonly }"
     :style="model.barStyle"
   >
-    <div class="bar-info">
-      <BarButton
-        :active="true"
-        class="bar-label"
-        title="Server and lockstep runtime status"
-      >
-        <span class="bar-label-text">{{ model.serverLabel }}</span
-        ><span class="bar-label-hover">STATUS</span>
-      </BarButton>
-    </div>
     <div class="bar-controls">
+      <BarControlGroup>
+        <BarButtons>
+          <BarButton
+            :active="true"
+            class="bar-label"
+            title="Server and lockstep runtime status"
+          >
+            <span class="bar-label-text">{{ model.serverLabel }}</span
+            ><span class="bar-label-hover">STATUS</span>
+          </BarButton>
+        </BarButtons>
+      </BarControlGroup>
       <BarControlGroup v-if="model.displayServerTime">
         <BarDivider />
         <span

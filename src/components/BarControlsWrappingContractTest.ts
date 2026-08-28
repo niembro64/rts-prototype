@@ -22,6 +22,41 @@ export function runBarControlsWrappingContractTest(): void {
     'CLIENT controls must use the shared wrapping components without PATH-only layout classes',
   );
 
+  // One button group for everything. The old connected-pill BarButtonGroup
+  // (fused borders, rounded end caps) is gone; every bar button — even a run
+  // of one — sits inside the wrapping <BarButtons> group, and the bars no
+  // longer reserve a left `.bar-info` column (DEFAULTS lives with the rest
+  // of the buttons in `.bar-controls`).
+  const barSources: readonly (readonly [string, string])[] = [
+    ['BATTLE', battleBarSource],
+    ['SERVER', serverBarSource],
+    ['CLIENT', clientBarSource],
+    ['LOBBY', lobbySource],
+  ];
+  for (const [name, source] of barSources) {
+    assertContract(
+      !source.includes('BarButtonGroup') && !source.includes('bar-button-group'),
+      `${name} bar must not use the removed connected-pill button group`,
+    );
+    assertContract(
+      !source.includes('bar-info'),
+      `${name} bar must not reserve a left bar-info column; all buttons live in bar-controls`,
+    );
+    const template = source.slice(source.indexOf('<template>'));
+    let groupDepth = 0;
+    for (const tag of template.matchAll(/<\/?BarButtons?\b/g)) {
+      if (tag[0] === '<BarButtons') groupDepth += 1;
+      else if (tag[0] === '</BarButtons') groupDepth -= 1;
+      else if (tag[0] === '<BarButton') {
+        assertContract(
+          groupDepth >= 1,
+          `${name} bar has a <BarButton> outside a <BarButtons> group — every button run, even a single button, uses the same group`,
+        );
+      }
+    }
+    assertContract(groupDepth === 0, `${name} bar has unbalanced <BarButtons> tags`);
+  }
+
   const fixture = document.createElement('div');
   fixture.className = 'bar-controls';
   fixture.style.position = 'fixed';
@@ -34,7 +69,7 @@ export function runBarControlsWrappingContractTest(): void {
   label.className = 'control-label';
   label.textContent = 'PATH:';
   const buttons = document.createElement('div');
-  buttons.className = 'bar-button-group';
+  buttons.className = 'bar-buttons';
   for (const text of ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO']) {
     const button = document.createElement('button');
     button.className = 'control-btn';
@@ -61,6 +96,10 @@ export function runBarControlsWrappingContractTest(): void {
       buttonElements.every((button) => button.clientWidth >= button.scrollWidth),
       'wrapped button labels must retain their readable intrinsic width',
     );
+    assertContract(
+      buttonElements.every((button) => window.getComputedStyle(button).borderRadius === '0px'),
+      'bar buttons must have square corners — no rounded borders anywhere in the bars',
+    );
   } finally {
     fixture.remove();
   }
@@ -68,4 +107,5 @@ export function runBarControlsWrappingContractTest(): void {
 import { CLIENT_CONFIG } from '../clientBarConfig';
 import battleBarSource from './GameCanvasBattleControlBar.vue?raw';
 import clientBarSource from './GameCanvasClientControlBar.vue?raw';
+import serverBarSource from './GameCanvasServerControlBar.vue?raw';
 import lobbySource from './LobbyModal.vue?raw';

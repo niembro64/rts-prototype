@@ -1,6 +1,6 @@
 import { createApp } from 'vue';
 // Canonical styling for the bar-control component family
-// (BarLabel / BarButton / BarButtonGroup / BarControlGroup).
+// (BarLabel / BarButton / BarButtons / BarControlGroup).
 // Loaded once at app boot so both the bottom bars (which still use
 // bare HTML with the same class names) and the GAME LOBBY's
 // component-based controls share one source of truth.

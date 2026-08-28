@@ -21,7 +21,7 @@ import {
   type UnitLocomotionRosterGroup,
 } from '../game/sim/blueprints/unitLocomotionRoster';
 import BarButton from './BarButton.vue';
-import BarButtonGroup from './BarButtonGroup.vue';
+import BarButtons from './BarButtons.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
@@ -100,18 +100,20 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
     :class="{ 'bar-readonly': model.isReadonly }"
     :style="model.barStyle"
   >
-    <div class="bar-info">
-      <BarButton
-        :active="true"
-        class="bar-label"
-        title="Click to reset battle settings to defaults"
-        @click="model.resetDemoDefaults"
-      >
-        <span class="bar-label-text">{{ model.battleLabel }}</span
-        ><span class="bar-label-hover">DEFAULTS</span>
-      </BarButton>
-    </div>
     <div class="bar-controls">
+      <BarControlGroup>
+        <BarButtons>
+          <BarButton
+            :active="true"
+            class="bar-label"
+            title="Click to reset battle settings to defaults"
+            @click="model.resetDemoDefaults"
+          >
+            <span class="bar-label-text">{{ model.battleLabel }}</span
+            ><span class="bar-label-hover">DEFAULTS</span>
+          </BarButton>
+        </BarButtons>
+      </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <span class="time-display" title="Battle elapsed time">{{
@@ -121,7 +123,7 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>PRESETS:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="preset in model.presets"
             :key="preset.id"
@@ -129,17 +131,19 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Apply preset: ${preset.name}`"
             @click="model.applyPreset(preset)"
           >{{ preset.name }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>UNITS:</BarLabel>
-        <BarButton
-          :active="model.allDemoUnitsActive"
-          title="Toggle all unit blueprints on/off"
-          @click="model.toggleAllDemoUnits"
-        >ALL</BarButton>
-        <BarButtonGroup>
+        <BarButtons>
+          <BarButton
+            :active="model.allDemoUnitsActive"
+            title="Toggle all unit blueprints on/off"
+            @click="model.toggleAllDemoUnits"
+          >ALL</BarButton>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="group in rosterUnitLocomotionGroups"
             :key="group.type"
@@ -148,8 +152,8 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="locomotionGroupTitle(group)"
             @click="model.toggleDemoUnitBlueprintIds(group.unitBlueprintIds)"
           >{{ group.label }}</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="ut in rosterUnitBlueprintIds"
             :key="ut"
@@ -157,17 +161,19 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Toggle ${ut} units in demo battle`"
             @click="model.toggleDemoUnitBlueprintId(ut)"
           >{{ getUnitDisplayShortName(ut) }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel>BUILDINGS:</BarLabel>
-        <BarButton
-          :active="model.allDemoBuildingsActive"
-          title="Toggle all building blueprints on/off"
-          @click="model.toggleAllDemoBuildings"
-        >ALL</BarButton>
-        <BarButtonGroup>
+        <BarButtons>
+          <BarButton
+            :active="model.allDemoBuildingsActive"
+            title="Toggle all building blueprints on/off"
+            @click="model.toggleAllDemoBuildings"
+          >ALL</BarButton>
+        </BarButtons>
+        <BarButtons>
           <BarButton
             v-for="bt in rosterBuildingBlueprintIds"
             :key="bt"
@@ -175,12 +181,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Toggle ${bt} in demo battle`"
             @click="model.toggleDemoBuildingBlueprintId(bt)"
           >{{ getBuildingDisplayShortName(bt) }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel :title="`Total entities (units + buildings) for the whole match, split evenly across the ${model.occupiedAllyTeamCount} team(s) that hold seats. Teammates share their team's pool.`">ENTITY CAP:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.cap.options"
             :key="opt"
@@ -188,14 +194,14 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Max ${opt.toLocaleString()} entities total — ${Math.floor(opt / model.occupiedAllyTeamCount).toLocaleString()} per team across ${model.occupiedAllyTeamCount} team(s)`"
             @click="model.changeEntityCountCap(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarLabel :title="`Team entity count cap: each team may field ${Math.floor(model.displayUnitCap / model.occupiedAllyTeamCount).toLocaleString()} entities`"
         >= {{ Math.floor(model.displayUnitCap / model.occupiedAllyTeamCount).toLocaleString() }}/TEAM</BarLabel>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>WIDTH:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.mapSize.width.options"
             :key="opt.label"
@@ -203,12 +209,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set map width to ${opt.label} land cells`"
             @click="model.applyMapLandDimensions({ widthLandCells: opt.valueLandCells, lengthLandCells: model.mapLengthLandCells })"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>LENGTH:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.mapSize.length.options"
             :key="opt.label"
@@ -216,12 +222,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set map length to ${opt.label} land cells`"
             @click="model.applyMapLandDimensions({ widthLandCells: model.mapWidthLandCells, lengthLandCells: opt.valueLandCells })"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>CENTER:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.centerMagnitude.options"
             :key="opt"
@@ -229,12 +235,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set the centre dome altitude to ${opt}`"
             @click="model.applyCenterMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel title="Annular crest: baseline at the map centre, full altitude at the authored crest radius, baseline again at the outer radius">RING:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.ringMagnitude.options"
             :key="opt"
@@ -242,12 +248,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set the ring crest altitude to ${opt}`"
             @click="model.applyRingMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>DIVIDERS:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.dividersMagnitude.options"
             :key="opt"
@@ -255,12 +261,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set the team-separator ridge altitude to ${opt}`"
             @click="model.applyDividersMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>PERIMETER:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.perimeterMagnitude.options"
             :key="opt"
@@ -268,12 +274,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set the map perimeter ring altitude to ${opt}`"
             @click="model.applyPerimeterMagnitude(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel title="Which terrain step applies last — last wins where they overlap">PRECEDENCE:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             :active="model.terrainPrecedence === 'perimeter-precedence'"
             title="PERIMETER last: the ring overrides the divider ridges at the rim — an unbroken rim/moat"
@@ -284,12 +290,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             title="DIVIDERS last: the ridges run out to the map edge, punching through the ring; the ring fills in between them"
             @click="model.applyTerrainPrecedence('dividers-precedence')"
           >DIVIDERS</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>D-PLATEAU:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainDTerrain.options"
             :key="opt"
@@ -299,12 +305,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
               : `Vertical spacing between plateau levels: ${opt}`"
             @click="model.applyTerrainDTerrain(opt)"
           >{{ opt === 0 ? 'NONE' : opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>PLATEAU WALL (DEG):</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.plateauWallSlopeDegrees.options"
             :key="opt"
@@ -312,12 +318,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`D-PLATEAU transition slope angle from horizontal: ${opt} degrees`"
             @click="model.applyPlateauWallSlopeDegrees(opt)"
           >{{ opt }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>D-DEPOSIT:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.metalDepositStep.options"
             :key="opt"
@@ -325,12 +331,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Signed metal-extractor pad altitude step: ${opt} (negative lowers authored levels)`"
             @click="model.applyMetalDepositStep(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel>TERRAIN DETAIL:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainDetail.options"
             :key="opt"
@@ -340,12 +346,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
               : `Fine-triangle subdivisions per land cell: ${opt}`"
             @click="model.applyTerrainDetail(opt)"
           >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
         <BarLabel title="Authoritative server simulation steps per second; rendering remains independent">SIM TICK (HZ):</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.simulationTickRate.options"
             :key="opt"
@@ -353,7 +359,7 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`${opt} authoritative simulation tick${opt === 1 ? '' : 's'} per second`"
             @click="model.applySimulationTickRate(opt)"
           >{{ opt }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -372,7 +378,7 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>CONVERTER TAX:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="opt in BATTLE_CONFIG.converterTax.options"
             :key="opt"
@@ -380,12 +386,12 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Tax applied to resource converters: ${opt.toFixed(1)}`"
             @click="model.setConverterTax(opt)"
           >{{ opt.toFixed(1) }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Simulation EMA for units touching ground. SNAP uses the raw terrain triangle normal; FAST/MED/SLOW blend the unit's stored ground normal toward the new contact normal before chassis tilt takes the new slope angle.">UNITS TOUCHING GROUND NORMAL EMA:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="mode in SERVER_CONFIG.unitGroundNormalEma.options"
             :key="mode"
@@ -393,18 +399,20 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="`Set units-touching-ground normal EMA to ${UNIT_GROUND_NORMAL_EMA_LABEL[mode]}.`"
             @click="model.setUnitGroundNormalEmaModeValue(mode)"
           >{{ UNIT_GROUND_NORMAL_EMA_LABEL[mode] }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarButton
-          :active="model.currentFogOfWarEnabled"
-          title="Enable authoritative player vision, radar coverage, and fog-of-war filtering"
-          @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
-        >FOG OF WAR</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.currentFogOfWarEnabled"
+            title="Enable authoritative player vision, radar coverage, and fog-of-war filtering"
+            @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
+          >FOG OF WAR</BarButton>
+        </BarButtons>
         <BarDivider />
         <BarLabel title="World materials. METAL chooses how much of the map is ore; every rung shapes exactly the same land, only the metal moves. ALL metal and LAVA both leave the world barren: no trees, grass, or seaweed.">WORLD METAL:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="coverage in METAL_COVERAGES"
             :key="coverage"
@@ -412,9 +420,9 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="METAL_COVERAGE_TITLE[coverage]"
             @click="model.setMetalCoverage(coverage)"
           >{{ METAL_COVERAGE_LABEL[coverage] }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarLabel title="What occupies the authored liquid plane. NONE drains it completely and exposes the basin floor.">LIQUID:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             v-for="liquidMode in LIQUID_SURFACE_MODES"
             :key="liquidMode"
@@ -422,23 +430,27 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             :title="LIQUID_SURFACE_MODE_TITLE[liquidMode]"
             @click="model.setLiquidSurfaceMode(liquidMode)"
           >{{ LIQUID_SURFACE_MODE_LABEL[liquidMode] }}</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarDivider />
         <BarLabel title="All cells must fit the unit's medium-specific force envelope. This chooses whether the inter-cell climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
-        <BarButton
-          :active="model.currentSlopePathMode === 'symmetric'"
-          title="Terrain-edge climb policy. UPHILL ONLY preserves controlled descent between valid cells. BOTH DIRECTIONS requires the same climb authority uphill and downhill."
-          @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
-        >{{ model.currentSlopePathMode === 'symmetric' ? 'BOTH DIRECTIONS' : 'UPHILL ONLY' }}</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.currentSlopePathMode === 'symmetric'"
+            title="Terrain-edge climb policy. UPHILL ONLY preserves controlled descent between valid cells. BOTH DIRECTIONS requires the same climb authority uphill and downhill."
+            @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
+          >{{ model.currentSlopePathMode === 'symmetric' ? 'BOTH DIRECTIONS' : 'UPHILL ONLY' }}</BarButton>
+        </BarButtons>
         <BarDivider />
-        <BarButton
-          :active="model.currentSlowDownAtFinalWaypoint"
-          title="Toggle velocity-aware braking as units approach the final waypoint of their final order. Off keeps full thrust through the destination; corner-speed shaping is unchanged."
-          @click="model.setSlowDownAtFinalWaypoint(!model.currentSlowDownAtFinalWaypoint)"
-        >FINAL WAYPOINT SLOWDOWN</BarButton>
+        <BarButtons>
+          <BarButton
+            :active="model.currentSlowDownAtFinalWaypoint"
+            title="Toggle velocity-aware braking as units approach the final waypoint of their final order. Off keeps full thrust through the destination; corner-speed shaping is unchanged."
+            @click="model.setSlowDownAtFinalWaypoint(!model.currentSlowDownAtFinalWaypoint)"
+          >FINAL WAYPOINT SLOWDOWN</BarButton>
+        </BarButtons>
         <BarDivider />
         <BarLabel title="Whether ground pathfinding treats other units as obstacles when planning a route. OFF plans through units and leaves the encounter to local avoidance; ON routes around them.">PATHFINDING SHOULD CONSIDER UNITS:</BarLabel>
-        <BarButtonGroup>
+        <BarButtons>
           <BarButton
             :active="!model.currentPathfindingConsidersUnits"
             title="Plan paths through other units; local avoidance handles the encounter."
@@ -449,7 +461,7 @@ const LIQUID_SURFACE_MODE_TITLE: Record<LiquidSurfaceMode, string> = {
             title="Plan paths around other units."
             @click="model.setPathfindingConsidersUnits(true)"
           >ON</BarButton>
-        </BarButtonGroup>
+        </BarButtons>
         <BarDivider />
       </BarControlGroup>
     </div>
