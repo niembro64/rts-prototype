@@ -22,6 +22,14 @@ export const SUN_DIRECTION_SIM: SimSunDirection = Object.freeze({
   z: Math.sin(SUN_RENDER_CONFIG.elevationRad),
 });
 
+/** Direction sunlight travels through sim space, opposite the world-to-sun
+ * vector. Shared by the 3D top-bar instrument and its 2D minimap projection. */
+export const SUN_LIGHT_TRAVEL_SIM: SimSunDirection = Object.freeze({
+  x: -SUN_DIRECTION_SIM.x,
+  y: -SUN_DIRECTION_SIM.y,
+  z: -SUN_DIRECTION_SIM.z,
+});
+
 const sunHorizontalMag = Math.max(
   1e-6,
   Math.hypot(SUN_DIRECTION_SIM.x, SUN_DIRECTION_SIM.y),
