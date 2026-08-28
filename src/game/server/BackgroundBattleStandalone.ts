@@ -446,8 +446,8 @@ export function spawnBackgroundUnitsStandalone(
   // A map with no water turns the demo's water roster off entirely: the
   // opening wave must not drop sea units onto dry land, or into molten rock.
   // Reinforcements already draw from the water-excluded center-battle set in
-  // every world. `mapHasWater()` owns which maps those are — LIQUID = LAVA is
-  // one of them, an unexcavated map is another.
+  // every world. `mapHasWater()` owns which maps those are — LAVA and NONE
+  // are two of them, and an unexcavated WATER map is another.
   const initialWaveAllowedUnitBlueprintIds = mapHasWater()
     ? allowedUnitBlueprintIds
     : centerBattleAllowedUnitBlueprintIds;

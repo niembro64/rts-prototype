@@ -13,7 +13,7 @@ import type { Vec3 } from '../../types/vec2';
 import { isEntityActive } from './buildableHelpers';
 import { getBuildingBlueprint, getUnitBlueprint, TURRET_BLUEPRINTS } from './blueprints';
 import { resolveWeaponWorldMount } from './combat/combatUtils';
-import { WATER_LEVEL } from './Terrain';
+import { getLiquidSurfaceLevel } from './worldSurfaceState';
 import {
   hasAnySensorRadius,
   type SensorMedium,
@@ -21,9 +21,11 @@ import {
 
 export type { SensorMedium } from './sensorConfig';
 
-/** Sensor points at the waterline belong to air; only points below it are water. */
+/** With liquid present, the plane belongs to air and only points below it are
+ * water. NONE has an effective boundary below every finite point, so every
+ * host routes to air. */
 export function getSensorMediumAtZ(z: number): SensorMedium {
-  return z < WATER_LEVEL ? 'underwater' : 'aboveWater';
+  return z < getLiquidSurfaceLevel() ? 'underwater' : 'aboveWater';
 }
 
 /** The host origin — never the mounted sensor height or body volume — routes

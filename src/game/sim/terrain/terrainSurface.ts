@@ -4,6 +4,10 @@ import { getSimWasm } from '../../sim-wasm/init';
 import { WATER_LEVEL } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
 import {
+  getLiquidSurfaceLevel,
+  liquidSurfaceExists,
+} from '../worldSurfaceState';
+import {
   getTerrainMeshHeight,
   getTerrainMeshSample,
   terrainMeshHeightFromSample,
@@ -67,7 +71,7 @@ export function getSurfaceNormal(
   }
   const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
   const h0 = terrainMeshHeightFromSample(sample);
-  if (h0 < WATER_LEVEL) {
+  if (h0 < getLiquidSurfaceLevel()) {
     if (out !== undefined) {
       out.nx = 0;
       out.ny = 0;
@@ -149,7 +153,7 @@ export function getSurfaceHeight(
     // or point outside the mesh after clamp.
   }
   return Math.max(
-    WATER_LEVEL,
+    getLiquidSurfaceLevel(),
     getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize),
   );
 }
@@ -207,6 +211,7 @@ export function isWaterAt(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): boolean {
+  if (!liquidSurfaceExists()) return false;
   const flatZone = findDepositFlatZoneAt(x, z);
   if (flatZone) return flatZone.height < WATER_LEVEL;
   // Bed height rides the WASM terrain sampler (with the same JS mesh
@@ -216,4 +221,3 @@ export function isWaterAt(
     getTerrainBedHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL
   );
 }
-

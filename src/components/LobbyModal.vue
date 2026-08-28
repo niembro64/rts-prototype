@@ -929,7 +929,7 @@ const terrainSectionVars = computed(() =>
           v-if="!mapHasWater && !previewLoading"
           class="preview-note"
           role="note"
-          title="No part of this map lies below the water line, or its liquid is lava — so water-only units and structures are out of the roster."
+          title="No part of this map lies below the water line, or its liquid is not water — so water-only units and structures are out of the roster."
         >NO WATER UNITS</div>
         <div
           v-if="!mapHasLand && !previewLoading"

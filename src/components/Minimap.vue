@@ -9,6 +9,10 @@ import { MAP_BG_COLOR, WIND_SPEED_MAX, WIND_SPEED_MIN } from '@/config';
 import { COLORS, cssHex, readRgbTuple } from '@/colorsConfig';
 import { HUD_MINIMAP_MAX_PX } from './hudLayout';
 import { minimapPointerToWorld } from './minimapHelpers';
+import {
+  getLiquidSurfaceMode,
+  liquidSurfaceExists,
+} from '@/game/sim/worldSurfaceState';
 
 import type { MinimapData } from '@/types/ui';
 
@@ -115,11 +119,23 @@ function ensureWaterMask(
   mapWidth: number,
   mapHeight: number,
 ): Uint8Array {
-  const nextKey = [getTerrainVersion(), w, h, mapWidth, mapHeight].join('|');
+  const nextKey = [
+    getTerrainVersion(),
+    getLiquidSurfaceMode(),
+    w,
+    h,
+    mapWidth,
+    mapHeight,
+  ].join('|');
   if (waterMask && waterMaskKey === nextKey && waterMask.length === w * h) {
     return waterMask;
   }
   const mask = new Uint8Array(w * h);
+  if (!liquidSurfaceExists()) {
+    waterMask = mask;
+    waterMaskKey = nextKey;
+    return mask;
+  }
   const scaleX = w / mapWidth;
   const scaleY = h / mapHeight;
   let mi = 0;
@@ -176,6 +192,7 @@ function drawBackgroundLayer(): void {
     h,
     mapWidth,
     mapHeight,
+    getLiquidSurfaceMode(),
     showTerrain ? 1 : 0,
   ].join('|');
   if (nextKey === backgroundKey) return;

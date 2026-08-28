@@ -590,10 +590,11 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
     has_air: &mut bool,
     min_normal_z: &mut f32,
 ) {
-    if min_height < TERRAIN_WATER_LEVEL {
+    let water_level = liquid_surface_level();
+    if min_height < water_level {
         *has_water = true;
     }
-    if max_height_in_rect >= TERRAIN_WATER_LEVEL {
+    if max_height_in_rect >= water_level {
         *has_air = true;
     }
     // Retain the actual bed angle here. Water-surface-supported traversals
@@ -794,7 +795,7 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
     }
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
     match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
-        Some(sample) => terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL),
+        Some(sample) => terrain_height_from_triangle_sample(sample).max(liquid_surface_level()),
         None => f64::NAN,
     }
 }
@@ -1025,7 +1026,7 @@ pub(crate) fn terrain_normal_from_triangle_sample(
     sample: TerrainTriangleSample,
 ) -> (f64, f64, f64) {
     let h0 = terrain_height_from_triangle_sample(sample);
-    if h0 < TERRAIN_WATER_LEVEL {
+    if h0 < liquid_surface_level() {
         return (0.0, 0.0, 1.0);
     }
     terrain_bed_normal_from_triangle_sample(sample)
@@ -1207,7 +1208,7 @@ pub fn terrain_sample_force_support_for_slots(
         ground_normals_out[base] = nx;
         ground_normals_out[base + 1] = ny;
         ground_normals_out[base + 2] = nz;
-        material_flags_out[i] = if ground_z < TERRAIN_WATER_LEVEL { 1 } else { 0 };
+        material_flags_out[i] = if ground_z < liquid_surface_level() { 1 } else { 0 };
     }
     1
 }
@@ -1237,7 +1238,7 @@ const TERRAIN_WATER_PROBE_DY: [f64; 8] = [
 fn terrain_sample_is_water(t: &TerrainGrid, x: f64, z: f64) -> Option<bool> {
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
     let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
-    Some(terrain_height_from_triangle_sample(sample) < TERRAIN_WATER_LEVEL)
+    Some(terrain_height_from_triangle_sample(sample) < liquid_surface_level())
 }
 
 /// Batch terrain-only water escape probes. `center_water_flags_out[i]` is 1
@@ -1362,7 +1363,7 @@ pub(crate) fn terrain_sample_buildability(
     let flat_height = terrain_flat_zone_height_at(flat_zones, x, y);
     if let Some(height) = flat_height {
         return Some((
-            height < TERRAIN_WATER_LEVEL,
+            height < liquid_surface_level(),
             1.0,
             terrain_flat_zone_buildability_level(height, d_terrain, shelf_height_tolerance),
         ));
@@ -1372,7 +1373,7 @@ pub(crate) fn terrain_sample_buildability(
     let mesh_height = terrain_height_from_triangle_sample(sample);
     let (_, _, normal_up) = terrain_normal_from_triangle_sample(sample);
     Some((
-        mesh_height < TERRAIN_WATER_LEVEL,
+        mesh_height < liquid_surface_level(),
         normal_up,
         terrain_plateau_level_for_height(mesh_height, d_terrain, shelf_height_tolerance),
     ))

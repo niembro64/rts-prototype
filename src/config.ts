@@ -406,8 +406,8 @@ export const WATER_RENDER_CONFIG = {
 
 /** LIQUID = LAVA replacement surface. Always opaque (nothing sees through
  *  molten rock) and authored ABOVE the display range: the emissive scale is
- *  applied before tone mapping so ACES rolls the excess off into a hot orange
- *  core instead of leaving flat red paint. */
+ *  applied before tone mapping while the renderer counter-flows two scales of
+ *  generated crust, leaving dark plates around pulsing orange fissures. */
 export const LAVA_RENDER_CONFIG = {
   color: COLORS.world.water.lava.colorHex,
   emissiveScale: COLORS.world.water.lava.emissiveScale,

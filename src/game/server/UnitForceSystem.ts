@@ -22,7 +22,8 @@ import {
 } from '../sim/surfaceProbeSets';
 import { SurfaceLiftProbeSampleCache } from './SurfaceLiftProbeSampleCache';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
-import { WATER_LEVEL, getTerrainVersion } from '../sim/Terrain';
+import { getTerrainVersion } from '../sim/Terrain';
+import { getLiquidSurfaceLevel } from '../sim/worldSurfaceState';
 import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
@@ -617,7 +618,7 @@ export class UnitForceSystem {
         const airLiftMediumActive = airSurfaceLiftMediumIsActive(
           bodyZ,
           waterFraction,
-          WATER_LEVEL,
+          getLiquidSurfaceLevel(),
         ) &&
           (airGroundInverseLiftAuthored || airWaterInverseLiftAuthored);
         const waterLiftMediumActive = waterFraction > 0 &&
@@ -1065,7 +1066,10 @@ export class UnitForceSystem {
             x,
             y,
             this.sampleSurfaceLiftSupportZAt(x, y, ignoreEntityId, includeSupportSurfaces),
-            surfaceProbeUsesWaterSurface(this.world.getTerrainBedZ(x, y), WATER_LEVEL),
+            surfaceProbeUsesWaterSurface(
+              this.world.getTerrainBedZ(x, y),
+              getLiquidSurfaceLevel(),
+            ),
           );
         },
       );
@@ -1104,7 +1108,7 @@ export class UnitForceSystem {
           groundInverseDistanceWorld: getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, groundZ),
           usesGroundInverseDistance,
           waterSurfaceInverseDistanceWorld: waterCovered
-            ? getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, WATER_LEVEL)
+            ? getSurfaceLiftInverseDistanceToSurfaceWorld(supportZ, getLiquidSurfaceLevel())
             : null,
           usesWaterSurfaceInverseDistance,
           waterSurfaceDepthWorld: waterCovered
@@ -1128,7 +1132,7 @@ export class UnitForceSystem {
       if (waterCovered && airSurfaceFollowingInverseForceFromWater > 0) {
         const forceMultiplier = this.surfaceFollowingInverseResponseFromSurfaceZ(
           supportZ,
-          WATER_LEVEL,
+          getLiquidSurfaceLevel(),
         );
         const proposedForce = airSurfaceFollowingInverseForceFromWater * forceMultiplier;
         airInverseProposedForceAggregate = accumulateSurfaceProbeProposedForce(
@@ -1163,7 +1167,7 @@ export class UnitForceSystem {
     // outriggers carry this unit's most recent lattice refresh.
     const centerWaterCovered = surfaceProbeUsesWaterSurface(
       this.world.getTerrainBedZ(bodyX, bodyY),
-      WATER_LEVEL,
+      getLiquidSurfaceLevel(),
     );
     accumulateProbe(bodyX, bodyY, directGroundZ, centerWaterCovered, true);
     const outriggerCount = samples.count(entitySlot);

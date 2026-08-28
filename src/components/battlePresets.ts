@@ -14,6 +14,7 @@ import {
 import {
   isLiquidSurfaceMode,
   isMetalCoverage,
+  LIQUID_SURFACE_MODE_LABEL,
   METAL_COVERAGE_LABEL,
   type LiquidSurfaceMode,
   type MetalCoverage,
@@ -417,7 +418,7 @@ export function resolveBattleMapPresentation(
 ): BattleMapPresentation {
   const presetName = findMatchingPresetName(current);
   const terrain = `${METAL_COVERAGE_LABEL[current.metalCoverage]} METAL`;
-  const liquid = current.liquidSurfaceMode === 'lava' ? 'LAVA' : 'WATER';
+  const liquid = LIQUID_SURFACE_MODE_LABEL[current.liquidSurfaceMode];
   const worldWidth = current.mapWidthLandCells * LAND_CELL_SIZE;
   const worldLength = current.mapLengthLandCells * LAND_CELL_SIZE;
   // ONE FIELD PER ENTRY, not one row. How many share a row is a typographic

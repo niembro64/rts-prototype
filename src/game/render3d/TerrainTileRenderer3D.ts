@@ -131,7 +131,12 @@ import {
   terrainBakedLightingShadeExpression,
 } from './RenderLighting3D';
 import { WATER_SURFACE_LINEAR_COLOR, LAVA_SURFACE_LINEAR_COLOR } from './WaterColor3D';
-import { isLavaLiquidSurface, isMetalTerrainSurface } from '../sim/worldSurfaceState';
+import {
+  getLiquidSurfaceMode,
+  isLavaLiquidSurface,
+  isMetalTerrainSurface,
+  liquidSurfaceExists,
+} from '../sim/worldSurfaceState';
 import {
   METAL_SURFACE_LAYER_GLSL,
   METAL_SURFACE_MATERIAL,
@@ -250,9 +255,11 @@ const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
 // The perimeter-rim seam-hider blends to whatever liquid the map is using,
 // so a lava map's rim meets lava instead of a leftover sea colour.
-const TERRAIN_HORIZON_WATER_COLOR = (isLavaLiquidSurface()
-  ? LAVA_SURFACE_LINEAR_COLOR
-  : WATER_SURFACE_LINEAR_COLOR).clone();
+function currentTerrainHorizonLiquidColor(): THREE.Color {
+  return (isLavaLiquidSurface()
+    ? LAVA_SURFACE_LINEAR_COLOR
+    : WATER_SURFACE_LINEAR_COLOR);
+}
 
 type TerrainTileRendererUpdateOptions = {
   localPlayerId: PlayerId;
@@ -496,7 +503,8 @@ function samplePathingCellTerrain(
 
   const centerSample = getTerrainMeshSample(midX, midZ, mapWidth, mapHeight);
   const centerHeight = terrainMeshHeightFromSample(centerSample);
-  let hasWater = centerHeight < WATER_LEVEL;
+  const liquidPresent = liquidSurfaceExists();
+  let hasWater = liquidPresent && centerHeight < WATER_LEVEL;
   let fullySubmerged = hasWater;
   for (let i = 0; i < PATHING_CELL_EDGE_SAMPLE_POINTS.length; i++) {
     const point = PATHING_CELL_EDGE_SAMPLE_POINTS[i];
@@ -504,7 +512,7 @@ function samplePathingCellTerrain(
     const z = pathingCellSampleCoordinate(z0, z1, midZ, point[1], inset);
     const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight);
     const height = terrainMeshHeightFromSample(sample);
-    if (height < WATER_LEVEL) hasWater = true;
+    if (liquidPresent && height < WATER_LEVEL) hasWater = true;
     else fullySubmerged = false;
   }
   return { hasWater, fullySubmerged };
@@ -700,6 +708,7 @@ export class TerrainTileRenderer3D {
   private currentTerrainGeometryCacheKey = '';
 
   private triangleDebugEnabledUniform = { value: 0 };
+  private terrainLiquidEnabledUniform = { value: liquidSurfaceExists() ? 1 : 0 };
   private terrainWaterLevelUniform = { value: WATER_LEVEL };
   private terrainMaxHeightUniform = { value: TERRAIN_MAX_RENDER_Y };
   private terrainSubmergedBrightnessUniform = { value: TERRAIN_SUBMERGED_BRIGHTNESS };
@@ -716,7 +725,9 @@ export class TerrainTileRenderer3D {
     value: TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
   };
   private terrainHorizonColorUniform = { value: TERRAIN_HORIZON_COLOR };
-  private terrainHorizonWaterColorUniform = { value: TERRAIN_HORIZON_WATER_COLOR };
+  private terrainHorizonWaterColorUniform = {
+    value: currentTerrainHorizonLiquidColor().clone(),
+  };
   private terrainHorizonShadeUniform = { value: TERRAIN_HORIZON_BLEND_CONFIG.shade };
   private elevationMapEnabledUniform = { value: 0 };
   private buildGridTexture: THREE.DataTexture;
@@ -758,6 +769,7 @@ export class TerrainTileRenderer3D {
   private pathingTerrainMaskKeyTerrainVersion = 0;
   private pathingTerrainMaskKeyMapWidth = 0;
   private pathingTerrainMaskKeyMapHeight = 0;
+  private pathingTerrainMaskKeyLiquidSurfaceMode = getLiquidSurfaceMode();
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
@@ -821,7 +833,7 @@ export class TerrainTileRenderer3D {
   // predates the material merge and is preserved here on purpose rather
   // than silently resolved in either direction.
   private terrainHorizonWaterBlendEnabledUniform = {
-    value: isMetalTerrainSurface() ? 0 : 1,
+    value: isMetalTerrainSurface() || !liquidSurfaceExists() ? 0 : 1,
   };
   private readonly metalRegionField: MetalDepositSurfaceField3D;
   // How the region MEETS the ground. A SURFACE = METAL world switches it
@@ -976,6 +988,7 @@ export class TerrainTileRenderer3D {
   private installTerrainShader(): void {
     this.terrainMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
+      shader.uniforms.uTerrainLiquidEnabled = this.terrainLiquidEnabledUniform;
       shader.uniforms.uTerrainWaterLevel = this.terrainWaterLevelUniform;
       shader.uniforms.uTerrainMaxHeight = this.terrainMaxHeightUniform;
       shader.uniforms.uTerrainSubmergedBrightness = this.terrainSubmergedBrightnessUniform;
@@ -1080,6 +1093,7 @@ export class TerrainTileRenderer3D {
           '#include <common>',
           [
             'uniform float uTriangleDebugEnabled;',
+            'uniform float uTerrainLiquidEnabled;',
             'uniform float uTerrainWaterLevel;',
             'uniform float uTerrainMaxHeight;',
             'uniform float uTerrainSubmergedBrightness;',
@@ -1147,8 +1161,8 @@ export class TerrainTileRenderer3D {
             'float terrainHeightT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(1.0, uTerrainMaxHeight - uTerrainWaterLevel), 0.0, 1.0);',
             'float terrainDepthT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(0.0001, uTerrainSubmergedFadeEndHeight - uTerrainWaterLevel), 0.0, 1.0);',
             'float terrainDepthCosine = 0.5 - 0.5 * cos(3.141592653589793 * terrainDepthT);',
-            'float terrainDepthBrightness = mix(uTerrainSubmergedBrightness, 1.0, terrainDepthCosine);',
-            'float shoreline = 1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y);',
+            'float terrainDepthBrightness = mix(1.0, mix(uTerrainSubmergedBrightness, 1.0, terrainDepthCosine), uTerrainLiquidEnabled);',
+            'float shoreline = uTerrainLiquidEnabled * (1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y));',
             'float upland = smoothstep(0.16, 0.58, terrainHeightT);',
             'float exposedRock = smoothstep(0.38, 0.86, terrainHeightT);',
             'float steepRock = smoothstep(0.20, 0.56, vTerrainSlope);',
@@ -1695,7 +1709,8 @@ export class TerrainTileRenderer3D {
       this.pathingTerrainMaskKeyCellSize === buildCellSize &&
       this.pathingTerrainMaskKeyTerrainVersion === terrainVersion &&
       this.pathingTerrainMaskKeyMapWidth === this.mapWidth &&
-      this.pathingTerrainMaskKeyMapHeight === this.mapHeight;
+      this.pathingTerrainMaskKeyMapHeight === this.mapHeight &&
+      this.pathingTerrainMaskKeyLiquidSurfaceMode === getLiquidSurfaceMode();
   }
 
   private storePathingTerrainMaskCacheKey(
@@ -1711,6 +1726,7 @@ export class TerrainTileRenderer3D {
     this.pathingTerrainMaskKeyTerrainVersion = terrainVersion;
     this.pathingTerrainMaskKeyMapWidth = this.mapWidth;
     this.pathingTerrainMaskKeyMapHeight = this.mapHeight;
+    this.pathingTerrainMaskKeyLiquidSurfaceMode = getLiquidSurfaceMode();
   }
 
   private refreshPathingTerrainCellMask(
@@ -1826,7 +1842,7 @@ export class TerrainTileRenderer3D {
                 strictMaxZ,
               );
               if (heightRange === null) continue;
-              hasWater ||= heightRange.minHeight < WATER_LEVEL;
+              hasWater ||= liquidSurfaceExists() && heightRange.minHeight < WATER_LEVEL;
             }
           }
         }
@@ -2045,6 +2061,7 @@ export class TerrainTileRenderer3D {
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
       graphicsConfig.terrainTileSideWalls ? 1 : 0,
       WATER_FULLY_OPAQUE ? 1 : 0,
+      getLiquidSurfaceMode(),
       triangleDebug ? 1 : 0,
       wallTriangleDebug ? 1 : 0,
       terrainTextureSmoothing,
@@ -2504,6 +2521,7 @@ export class TerrainTileRenderer3D {
         const ic = authoritativeMesh.triangleIndices[triOffset + 2];
         if (
           WATER_FULLY_OPAQUE &&
+          liquidSurfaceExists() &&
           authoritativeMesh.vertexHeights[ia] <= WATER_LEVEL &&
           authoritativeMesh.vertexHeights[ib] <= WATER_LEVEL &&
           authoritativeMesh.vertexHeights[ic] <= WATER_LEVEL
@@ -2736,7 +2754,9 @@ export class TerrainTileRenderer3D {
             step: cellSize * MAP_INFO_ANNEX_RENDER_CONFIG.surfaceStepLandCellFraction,
             floorY: getWorldBoxFloorY(this.mapWidth, this.mapHeight),
             walls: graphicsConfig.terrainTileSideWalls,
-            cullAtOrBelowY: WATER_FULLY_OPAQUE ? WATER_LEVEL : null,
+            cullAtOrBelowY: WATER_FULLY_OPAQUE && liquidSurfaceExists()
+              ? WATER_LEVEL
+              : null,
           },
           {
             pushSurfaceVertex: (x, y, z, nx, ny, nz, slope): number => {
@@ -2937,6 +2957,10 @@ export class TerrainTileRenderer3D {
       getTerrainSplitWallBoundaryVertices();
     const waterBoundaryMode = getWaterBoundaryMode();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
+    this.terrainLiquidEnabledUniform.value = liquidSurfaceExists() ? 1 : 0;
+    this.terrainHorizonWaterBlendEnabledUniform.value =
+      isMetalTerrainSurface() || !liquidSurfaceExists() ? 0 : 1;
+    this.terrainHorizonWaterColorUniform.value.copy(currentTerrainHorizonLiquidColor());
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.pathfindingHierarchyEnabledUniform.value = getPathingHierarchyDebug() ? 1 : 0;
     this.pathfindingHierarchyWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);

@@ -10,6 +10,10 @@ import {
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   WATER_LEVEL,
 } from './terrainConfig';
+import {
+  getLiquidSurfaceMode,
+  liquidSurfaceExists,
+} from '../worldSurfaceState';
 import { findDepositFlatZoneAt, getMetalDepositFlatZones } from './terrainFlatZones';
 import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getAuthoritativeTerrainTileMap, getTerrainVersion } from './terrainState';
@@ -30,6 +34,7 @@ export function getTerrainBuildabilityConfigKey(): string {
     TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
     BUILD_CONFIG.maxBuildableSlopeAngleDegrees,
+    getLiquidSurfaceMode(),
   ].join(':');
 }
 
@@ -107,6 +112,7 @@ function getExactBuildSquareTerrainSafety(
   const maxCellY = Math.max(0, Math.min(map.cellsY - 1, Math.floor(maxY / map.cellSize)));
   let hasWater = false;
   let hasGround = false;
+  const liquidPresent = liquidSurfaceExists();
   let found = false;
   let minNormalUp = 1;
   let minHeight = Number.POSITIVE_INFINITY;
@@ -154,8 +160,8 @@ function getExactBuildSquareTerrainSafety(
         for (const vertex of polygon) {
           minHeight = Math.min(minHeight, vertex.height);
           maxHeight = Math.max(maxHeight, vertex.height);
-          hasWater ||= vertex.height < WATER_LEVEL;
-          hasGround ||= vertex.height >= WATER_LEVEL;
+          hasWater ||= liquidPresent && vertex.height < WATER_LEVEL;
+          hasGround ||= !liquidPresent || vertex.height >= WATER_LEVEL;
         }
         const ux = bx - ax;
         const uy = bh - ah;
@@ -212,7 +218,7 @@ function sampleBuildabilityTerrain(
   const flatZone = findDepositFlatZoneAt(x, z);
   if (flatZone) {
     return {
-      water: flatZone.height < WATER_LEVEL,
+      water: liquidSurfaceExists() && flatZone.height < WATER_LEVEL,
       normalUp: 1,
       plateauLevel: getFlatZoneBuildabilityLevel(flatZone.height),
     };
@@ -220,7 +226,7 @@ function sampleBuildabilityTerrain(
   const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
   const normal = getTerrainMeshNormal(x, z, mapWidth, mapHeight, cellSize);
   return {
-    water: height < WATER_LEVEL,
+    water: liquidSurfaceExists() && height < WATER_LEVEL,
     normalUp: normal.nz,
     plateauLevel: getTerrainPlateauLevelForHeight(height),
   };

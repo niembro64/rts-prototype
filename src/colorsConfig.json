@@ -33,15 +33,15 @@
         "scrollWorldUnitsPerSecondZ": 3
       },
       "lava": {
-        "colorHex": "#b2523a",
-        "emissiveScale": 1.35,
+        "colorHex": "#ff6412",
+        "emissiveScale": 1.6,
         "texture": {
           "sourceFile": "src/game/render3d/LiquidSurfaceTexture3D.ts",
           "resolution": 256,
-          "tileWorldSize": 620,
-          "contrast": 0.55,
-          "scrollWorldUnitsPerSecondX": 3,
-          "scrollWorldUnitsPerSecondZ": 1
+          "tileWorldSize": 720,
+          "contrast": 0.78,
+          "scrollWorldUnitsPerSecondX": 4,
+          "scrollWorldUnitsPerSecondZ": 2
         }
       }
     },

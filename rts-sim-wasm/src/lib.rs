@@ -361,6 +361,9 @@ pub(crate) use projectile::*;
 mod deposits;
 #[allow(unused_imports)]
 pub(crate) use deposits::*;
+mod liquid_surface;
+#[allow(unused_imports)]
+pub(crate) use liquid_surface::*;
 mod terrain;
 #[allow(unused_imports)]
 pub(crate) use terrain::*;

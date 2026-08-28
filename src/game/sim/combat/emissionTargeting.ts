@@ -8,7 +8,7 @@ import {
   emissionMediumRouteAllows,
   type EmissionMedium,
 } from '../emissionMedium';
-import { WATER_LEVEL } from '../Terrain';
+import { getLiquidSurfaceLevel } from '../worldSurfaceState';
 
 export function emissionCanTargetEntity(
   matrix: EmissionMediumTrajectoryMatrix,
@@ -37,7 +37,8 @@ export function constrainAimPointToEmissionRoutes(
   aimPoint: Vec3,
 ): boolean {
   if (!emissionCanTargetEntity(matrix, sourceMedium, target)) return false;
-  const normalTargetMedium = emissionMediumAtZ(aimPoint.z, WATER_LEVEL);
+  const waterLevel = getLiquidSurfaceLevel();
+  const normalTargetMedium = emissionMediumAtZ(aimPoint.z, waterLevel);
   if (emissionMediumRouteAllows(matrix, sourceMedium, normalTargetMedium)) {
     return true;
   }
@@ -54,19 +55,19 @@ export function constrainAimPointToEmissionRoutes(
   const topZ = centerZ + verticalExtent;
 
   if (
-    topZ > WATER_LEVEL &&
+    topZ > waterLevel &&
     emissionMediumRouteAllows(matrix, sourceMedium, 'aboveWater')
   ) {
-    aimPoint.z = aimPoint.z > WATER_LEVEL
+    aimPoint.z = aimPoint.z > waterLevel
       ? Math.min(aimPoint.z, topZ)
-      : WATER_LEVEL + (topZ - WATER_LEVEL) * 0.5;
+      : waterLevel + (topZ - waterLevel) * 0.5;
     return true;
   }
   if (
-    bottomZ < WATER_LEVEL &&
+    bottomZ < waterLevel &&
     emissionMediumRouteAllows(matrix, sourceMedium, 'underwater')
   ) {
-    aimPoint.z = Math.max(bottomZ, Math.min(aimPoint.z, WATER_LEVEL));
+    aimPoint.z = Math.max(bottomZ, Math.min(aimPoint.z, waterLevel));
     return true;
   }
   return false;

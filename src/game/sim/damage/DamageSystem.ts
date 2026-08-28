@@ -53,7 +53,8 @@ import { recordEffectiveHostileDamage } from '../aggression';
 import { isAttackEmitter } from '../emitterKinds';
 import type { EmissionMediumTrajectoryMatrix } from '@/types/blueprintSchema.generated';
 import { emissionMediumAtZ } from '../emissionMedium';
-import { isWaterAt, WATER_LEVEL } from '../Terrain';
+import { isWaterAt } from '../Terrain';
+import { getLiquidSurfaceLevel } from '../worldSurfaceState';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1144,7 +1145,7 @@ export class DamageSystem {
     let reflectorExcludePanelIndex = -1;
     const emissionSourceMedium = mediumTrajectory === undefined
       ? undefined
-      : emissionMediumAtZ(startZ, WATER_LEVEL);
+      : emissionMediumAtZ(startZ, getLiquidSurfaceLevel());
     const panelsActive = this.world.turretShieldPanelsEnabled &&
       this.world.getShieldPanelUnits().length > 0;
     const fieldsActive = this.world.turretShieldSpheresEnabled &&
@@ -1177,19 +1178,20 @@ export class DamageSystem {
       }
 
       if (mediumTrajectory !== undefined && emissionSourceMedium !== undefined) {
-        const enteringWater = curSZ > WATER_LEVEL && curEZ <= WATER_LEVEL;
-        const exitingWater = curSZ <= WATER_LEVEL && curEZ > WATER_LEVEL;
+        const waterLevel = getLiquidSurfaceLevel();
+        const enteringWater = curSZ > waterLevel && curEZ <= waterLevel;
+        const exitingWater = curSZ <= waterLevel && curEZ > waterLevel;
         if (enteringWater || exitingWater) {
           const destinationMedium = enteringWater ? 'underwater' : 'aboveWater';
           if (!mediumTrajectory[emissionSourceMedium][destinationMedium]) {
             const dz = curEZ - curSZ;
-            const t = Math.abs(dz) <= 1e-12 ? 0 : (WATER_LEVEL - curSZ) / dz;
+            const t = Math.abs(dz) <= 1e-12 ? 0 : (waterLevel - curSZ) / dz;
             const crossingX = curSX + (curEX - curSX) * t;
             const crossingY = curSY + (curEY - curSY) * t;
             if (isWaterAt(crossingX, crossingY, this.world.mapWidth, this.world.mapHeight)) {
               curEX = crossingX;
               curEY = crossingY;
-              curEZ = WATER_LEVEL;
+              curEZ = waterLevel;
               mediumBoundaryTerminated = true;
             }
           }
