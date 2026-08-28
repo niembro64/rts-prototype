@@ -178,8 +178,8 @@ export type ClientBarConfig = {
   readonly burnMarks: BooleanSetting;
   readonly windParticles: BooleanSetting;
   /** Wheel, tread, and footstep prints drawn by GroundPrint3D from
-   *  unit movement. Default on — these decay quickly and read as
-   *  part of the unit silhouettes' motion. */
+   *  unit movement. Default on — these linger as battlefield motion
+   *  cues behind the unit silhouettes. */
   readonly locomotionMarks: BooleanSetting;
   /** Team-colored ORNAMENTATION — the extra trim geometry bolted onto
    *  entities to show their side (a unit's fin, a building's roof band).

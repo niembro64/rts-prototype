@@ -246,7 +246,7 @@
     "groundPrint": {
       "colorHex": "#1a1308",
       "initialAlpha": 0.2,
-      "lifetimeMs": 30000,
+      "lifetimeMs": 120000,
       "holdFraction": 0.35
     },
     "burnMark": {

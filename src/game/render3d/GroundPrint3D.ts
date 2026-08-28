@@ -140,7 +140,7 @@ const MIN_LIVE_TRAIL_MOTION_SQ = 1e-8;
 const STAMP_MIN_DIST_SQ = 4;
 
 // ── Buffer ceiling ──
-// Hard cap on the GPU-side merged geometry. With a 30 s lifetime a
+// Hard cap on the GPU-side merged geometry. With a 120 s lifetime a
 // large mobile army fills this in heavy traffic, at which point the
 // oldest EVICTION_BATCH_FRACTION of the marks are retired in one sweep
 // so the following emits allocate O(1) instead of scanning the whole

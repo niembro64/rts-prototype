@@ -1642,8 +1642,8 @@ export function setWindParticles(enabled: boolean): void {
 }
 
 /** Locomotion-mark toggle: wheel, tread, and footstep prints from
- *  unit movement. Default on — these decay quickly (≈1s base) and
- *  the motion cues read as part of the unit silhouettes. */
+ *  unit movement. Default on — these linger as battlefield motion
+ *  cues behind the unit silhouettes. */
 export function getLocomotionMarks(): boolean {
   return currentLocomotionMarks;
 }
