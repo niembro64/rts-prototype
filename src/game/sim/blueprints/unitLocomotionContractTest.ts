@@ -548,6 +548,17 @@ export function runUnitLocomotionContractTest(): void {
   const eagleMass = getUnitBlueprint('unitEagle').base.mass;
   const bee = getUnitLocomotion('unitBee');
   const beeMass = getUnitBlueprint('unitBee').base.mass;
+  const dragonfly = getUnitLocomotion('unitDragonfly');
+  const dragonflyMass = getUnitBlueprint('unitDragonfly').base.mass;
+  const constructionDrone = getUnitLocomotion('unitConstructionDrone');
+  const constructionDroneMass = getUnitBlueprint('unitConstructionDrone').base.mass;
+  assertContract(
+    dragonfly.physics.air.maxPropulsiveForce === 0.16 &&
+      dragonfly.physics.water.maxPropulsiveForce === 0.16 &&
+      dragonfly.physics.air.maxPropulsiveForce / dragonflyMass <
+        constructionDrone.physics.air.maxPropulsiveForce / constructionDroneMass,
+    'Dragonfly has a modest propulsion boost while remaining the deliberately slow heavy drone',
+  );
   // The Albatros is the lumbering heavy: half Eagle-class acceleration (so
   // half the cruise speed under the same air damping) and an authored yaw slew
   // far below the plane preset's, so its turning circle is much wider.

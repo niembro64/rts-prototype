@@ -3600,14 +3600,14 @@
           "maxPropulsiveForce": 0
         },
         "air": {
-          "maxPropulsiveForce": 0.106666666667,
+          "maxPropulsiveForce": 0.16,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 160,
             "surfaceFollowingInverseForceFromWater": 100
           }
         },
         "water": {
-          "maxPropulsiveForce": 0.106666666667,
+          "maxPropulsiveForce": 0.16,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
