@@ -538,27 +538,10 @@ export class Input3DModeClickController {
       areaQueueMode.splitTargets,
     );
     if (drag.kind === 'repairArea') {
-      const builders = this.getSelectedBuilders();
-      for (let i = 0; i < builders.length; i++) {
-        const cmd = buildRepairAreaCommand(
-          builders[i],
-          drag.start.x,
-          drag.start.y,
-          radius,
-          this.config.getTick(),
-          areaQueueMode.queue,
-          drag.start.z,
-          areaQueueMode.queueFront,
-          areaQueueMode.queueInsertIndex,
-          targetFilter,
-          this.resolveBarAreaCommandExpansion(
-            areaExpansionContext,
-            builders[i],
-            areaQueueMode.splitTargets,
-          ),
-        );
-        if (cmd) this.config.commandQueue.enqueue(cmd);
-      }
+      this.dispatchBuilderAreaCommand(
+        drag, radius, areaQueueMode, targetFilter, areaExpansionContext,
+        buildRepairAreaCommand,
+      );
       this.config.applyCursor('repair');
       if (!areaQueueMode.queue) this.config.exitRepairAreaMode();
       return;
@@ -644,9 +627,27 @@ export class Input3DModeClickController {
       if (!areaQueueMode.queue) this.config.exitMexUpgradeMode();
       return;
     }
+    this.dispatchBuilderAreaCommand(
+      drag, radius, areaQueueMode, targetFilter, areaExpansionContext,
+      buildReclaimAreaCommand,
+    );
+    this.config.applyCursor('reclaim');
+    if (!areaQueueMode.queue) this.config.exitReclaimMode();
+  }
+
+  /** Fan one builder area command (repair / reclaim — same signature) out
+   *  to every selected builder, with the per-builder BAR expansion slice. */
+  private dispatchBuilderAreaCommand(
+    drag: AreaDrag,
+    radius: number,
+    areaQueueMode: QueueCommandMode & { splitTargets: boolean },
+    targetFilter: AreaCommandTargetFilter | undefined,
+    areaExpansionContext: BarAreaExpansionContext,
+    buildCommand: typeof buildRepairAreaCommand | typeof buildReclaimAreaCommand,
+  ): void {
     const builders = this.getSelectedBuilders();
     for (let i = 0; i < builders.length; i++) {
-      const cmd = buildReclaimAreaCommand(
+      const cmd = buildCommand(
         builders[i],
         drag.start.x,
         drag.start.y,
@@ -665,8 +666,6 @@ export class Input3DModeClickController {
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
     }
-    this.config.applyCursor('reclaim');
-    if (!areaQueueMode.queue) this.config.exitReclaimMode();
   }
 
   /** BAR cmd_area_commands_filter parity. Ctrl at release keeps only

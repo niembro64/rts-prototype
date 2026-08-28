@@ -76,6 +76,23 @@ export class TurretMountCache3D {
     entry.forwardY = 0;
     entry.forwardZ = 0;
     entry.hasForward = false;
+    this.finishEntry(entry, prev, this.previous, key, x, y, z);
+    this.current.set(key, entry);
+  }
+
+  /** Finite-difference kinematics + previous-frame rollover shared by the
+   *  mount and per-lane emission caches: derive v/a against the matching
+   *  previous-frame entry, then write this frame's state into
+   *  `previousMap` so the next frame can differentiate against it. */
+  private finishEntry(
+    entry: TurretMountEntry,
+    prev: PreviousTurretMountEntry | undefined,
+    previousMap: Map<number, PreviousTurretMountEntry>,
+    key: number,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
     if (prev && prev.frame === this.frame - 1 && this.dtSec > 0) {
       const inv = 1 / this.dtSec;
       entry.vx = (x - prev.x) * inv;
@@ -92,9 +109,7 @@ export class TurretMountCache3D {
       entry.ay = 0;
       entry.az = 0;
     }
-    this.current.set(key, entry);
-
-    const previous = this.previous.get(key)
+    const previous = previousMap.get(key)
       ?? { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, frame: 0 };
     previous.x = x;
     previous.y = y;
@@ -103,7 +118,7 @@ export class TurretMountCache3D {
     previous.vy = entry.vy;
     previous.vz = entry.vz;
     previous.frame = this.frame;
-    this.previous.set(key, previous);
+    previousMap.set(key, previous);
   }
 
   /** Add the rendered barrel direction after the head/mount row has been
@@ -156,33 +171,8 @@ export class TurretMountCache3D {
     entry.forwardY = forwardY;
     entry.forwardZ = forwardZ;
     entry.hasForward = true;
-    if (prev && prev.frame === this.frame - 1 && this.dtSec > 0) {
-      const inv = 1 / this.dtSec;
-      entry.vx = (x - prev.x) * inv;
-      entry.vy = (y - prev.y) * inv;
-      entry.vz = (z - prev.z) * inv;
-      entry.ax = (entry.vx - prev.vx) * inv;
-      entry.ay = (entry.vy - prev.vy) * inv;
-      entry.az = (entry.vz - prev.vz) * inv;
-    } else {
-      entry.vx = 0;
-      entry.vy = 0;
-      entry.vz = 0;
-      entry.ax = 0;
-      entry.ay = 0;
-      entry.az = 0;
-    }
+    this.finishEntry(entry, prev, this.emissionPrevious, key, x, y, z);
     this.emissionCurrent.set(key, entry);
-    const previous = this.emissionPrevious.get(key)
-      ?? { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, frame: 0 };
-    previous.x = x;
-    previous.y = y;
-    previous.z = z;
-    previous.vx = entry.vx;
-    previous.vy = entry.vy;
-    previous.vz = entry.vz;
-    previous.frame = this.frame;
-    this.emissionPrevious.set(key, previous);
   }
 
   get(entityId: EntityId, turretIdx: number): TurretMountEntry | null {

@@ -169,44 +169,20 @@ export class BuildingAnimationController3D {
   }
 
   register(entity: Entity, mesh: EntityMesh): void {
-    if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
-      const entry = addAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
-      this.updateSolarAnimationQueue(entry);
-    }
-    if (mesh.windRig) {
-      const entry = addAnimatedBuildingEntry(this.windBuildings, this.windBuildingIndexById, entity, mesh);
-      this.updateWindAnimationQueue(entry);
-    }
-    if (mesh.extractorRig) {
-      const entry = addAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, entity, mesh);
-      this.updateExtractorAnimationQueue(entry);
-    }
+    this.enrollAnimatedRigs(entity, mesh);
     this.resourcePylonAnimator.register(entity, mesh);
-    if (mesh.radarRig) {
-      const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
-      this.updateRadarAnimationQueue(entry);
-    }
-    if (mesh.buildingOperationalRig) {
-      const entry = addAnimatedBuildingEntry(
-        this.operationalBuildings,
-        this.operationalBuildingIndexById,
-        entity,
-        mesh,
-      );
-      this.updateOperationalAnimationQueue(entry);
-    }
-    if (mesh.fabricatorConstructionRingRig) {
-      const entry = addAnimatedBuildingEntry(
-        this.fabricatorRingBuildings,
-        this.fabricatorRingBuildingIndexById,
-        entity,
-        mesh,
-      );
-      this.updateFabricatorConstructionRing(entry);
-    }
   }
 
+  /** Re-point every animated-rig entry at a rebuilt mesh. Identical to
+   *  register() minus the pylon animator, whose register/unregister
+   *  lifecycle is driven separately. */
   sync(entity: Entity, mesh: EntityMesh): void {
+    this.enrollAnimatedRigs(entity, mesh);
+  }
+
+  /** (Re)index every animated rig this mesh carries — one entry per rig
+   *  family, shared by register() and sync(). */
+  private enrollAnimatedRigs(entity: Entity, mesh: EntityMesh): void {
     if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
       const entry = addAnimatedBuildingEntry(this.solarBuildings, this.solarBuildingIndexById, entity, mesh);
       this.updateSolarAnimationQueue(entry);
