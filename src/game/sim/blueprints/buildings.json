@@ -666,7 +666,7 @@
       {
         "x": 0,
         "y": 0,
-        "z": 76.5
+        "z": 150.7
         }
       ],
       "particleTravelSpeed": 200,
@@ -702,7 +702,7 @@
       "mount": {
         "x": -92,
         "y": 0,
-        "z": 76.5
+        "z": 150.7
         },
         "mountId": "sensor",
         "controlMode": "autonomous"

@@ -986,8 +986,8 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
 }
 
 // ── Fabricator torus geometry (single source of truth) ──────────────────────
-// The fabricator is a hovering torus. Its body floats slightly above the
-// tallest visible unit in its own production roster. The renderer, spawn
+// The fabricator is a hovering torus. Its body floats at an exact multiple of
+// the tallest visible unit in its own production roster. The renderer, spawn
 // height, work effects, and turret mounts all read this geometry.
 //
 function computeMaxUnitCollisionRadius(
@@ -1025,7 +1025,7 @@ export function maxUnitVisualHeightForFabricator(
 }
 
 /** Height of a radial fabricator torus body, derived from the tallest visible
- * unit in that exact factory's roster plus a small readable clearance. */
+ * unit in that exact factory's roster. */
 export function fabricatorTorusHoverHeight(
   buildingBlueprintId: BuildingBlueprintId,
 ): number {

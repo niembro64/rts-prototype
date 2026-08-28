@@ -4232,7 +4232,8 @@
         the T2 Universal. The radial Universal body widths are exactly 10, 16, and 24 build-grid
         cells at T1/T2/T3. Each ring&rsquo;s hover height is derived from the tallest authored
         <em>visible</em> envelope in that exact production roster, including raised turret/barrel
-        geometry, plus the larger of 8 world units or 8%; collision diameter is not a height proxy.
+        geometry, and is exactly <strong>2.2 times</strong> that unit-top height above the ground;
+        collision diameter is not a height proxy.
         The T2 Aircraft Fabricator&rsquo;s flight deck also sits higher than the T1 deck.</li>
         <li><strong>Menu-size target.</strong> About five entries per T1/T2 specialist &mdash;
         twenty specialist menu entries at each of those tiers, counted as entries rather than unique units,
@@ -4836,7 +4837,8 @@
         reservation. It has no ground collision body, blocks no locomotion cell, and casts no
         clearance. Its physical presence is a static annular ring floating at the combat center
         that matches the visible torus &mdash; aircraft collide with the ring, ground units drive
-        underneath (the hover height clears the tallest unit by design), and released production
+        underneath (the hover height is 2.2 times the tallest producible visible unit-top height),
+        and released production
         shells fall through the open center hole. Units that spawn overlapping the footprint carry
         the standard ignore-static pair until they leave, so the structure never traps what it
         builds.
