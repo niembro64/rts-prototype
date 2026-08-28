@@ -30,6 +30,10 @@ type BuildAreaPlacementPlan = {
   gridY: number;
   x: number;
   y: number;
+  /** Per-placement facing is used by BAR's build-around grammar, whose four
+   *  sides turn toward the surrounded structure. Ordinary drags omit it and
+   *  inherit the active build facing. */
+  rotation?: number;
 };
 
 export type BuildLineSpacingInfo = {
@@ -58,9 +62,12 @@ type BuildPlacementEntitySource = {
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
 
-const BUILD_LINE_SPACING_STEP = 0.5;
 const BUILD_LINE_SPACING_MIN_STEPS = 0;
-const BUILD_LINE_SPACING_MAX_STEPS = 8;
+// BAR's persistent/limit-build-spacing widgets remember at most 16 spacing
+// steps for each selected building type.
+const BUILD_LINE_SPACING_MAX_STEPS = 16;
+const MAX_DRAG_BUILD_PLACEMENTS = 200;
+const BUILDING_COUNT_FUDGE_FACTOR = 1.4;
 
 export class Input3DBuildPlacementState {
   private mapWidth = Infinity;
@@ -70,6 +77,8 @@ export class Input3DBuildPlacementState {
   private occupancyVersion = '';
   private occupiedCells: ReadonlySet<string> | undefined;
   private buildLineSpacingSteps = 0;
+  private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
+  private readonly buildLineSpacingStepsByBlueprint = new Map<BuildingBlueprintId, number>();
   private buildFacingRotation = 0;
 
   canPlace = false;
@@ -112,6 +121,24 @@ export class Input3DBuildPlacementState {
       this.buildLineSpacingSteps - 1,
     );
     return this.spacingInfo;
+  }
+
+  /** BAR's cmd_persistent_build_spacing remembers the last gap independently
+   *  for every structure during a match. Switching build choices therefore
+   *  restores that structure's gap instead of leaking the previous choice's
+   *  spacing into it. */
+  setActiveBuildingBlueprintId(buildingBlueprintId: BuildingBlueprintId | null): void {
+    if (this.activeBuildingBlueprintId === buildingBlueprintId) return;
+    if (this.activeBuildingBlueprintId !== null) {
+      this.buildLineSpacingStepsByBlueprint.set(
+        this.activeBuildingBlueprintId,
+        this.buildLineSpacingSteps,
+      );
+    }
+    this.activeBuildingBlueprintId = buildingBlueprintId;
+    this.buildLineSpacingSteps = buildingBlueprintId === null
+      ? 0
+      : this.buildLineSpacingStepsByBlueprint.get(buildingBlueprintId) ?? 0;
   }
 
   rotateBuildFacingClockwise(): BuildFacingInfo {
@@ -273,17 +300,28 @@ export class Input3DBuildPlacementState {
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
     const dx = endX - startX;
     const dy = endY - startY;
-    const distance = Math.hypot(dx, dy);
-    const spacing = Math.max(context.footprint.gridWidth, context.footprint.gridHeight, 1)
-      * BUILD_GRID_CELL_SIZE
-      * this.buildLineSpacingMultiplier;
-    const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
+    // Recoil/BAR grows the step along the dominant drag axis and projects the
+    // other axis onto it. A spacing step adds one build cell on BOTH sides of
+    // the footprint; it is additive, not a percentage of building size.
+    const spacingX = this.buildAxisSpacing(context.footprint.gridWidth);
+    const spacingY = this.buildAxisSpacing(context.footprint.gridHeight);
+    const xDominant = Math.abs(dx) > Math.abs(dy);
+    const majorSpacing = xDominant ? spacingX : spacingY;
+    const majorDelta = xDominant ? dx : dy;
+    const minorDelta = xDominant ? dy : dx;
+    const placementCount = Math.max(
+      1,
+      Math.floor((Math.abs(majorDelta) + majorSpacing * BUILDING_COUNT_FUDGE_FACTOR) / majorSpacing),
+    );
+    const majorStep = (majorDelta > 0 ? 1 : -1) * majorSpacing;
+    const minorStep = majorStep * minorDelta / (majorDelta !== 0 ? majorDelta : 1);
 
     for (let i = 0; i < placementCount; i++) {
-      const t = placementCount === 1 ? 0 : i / (placementCount - 1);
-      const worldX = startX + dx * t;
-      const worldY = startY + dy * t;
-      this.tryAddPlannedBuildPlacement(context, worldX, worldY);
+      this.tryAddPlannedBuildPlacement(
+        context,
+        startX + (xDominant ? majorStep : minorStep) * i,
+        startY + (xDominant ? minorStep : majorStep) * i,
+      );
     }
 
     return context.placements;
@@ -298,15 +336,20 @@ export class Input3DBuildPlacementState {
     entitySource: BuildPlacementEntitySource,
   ): BuildAreaPlacementPlan[] {
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
-    const spacing = Math.max(context.footprint.gridWidth, context.footprint.gridHeight, 1)
-      * BUILD_GRID_CELL_SIZE
-      * this.buildLineSpacingMultiplier;
+    const spacingX = this.buildAxisSpacing(context.footprint.gridWidth);
+    const spacingY = this.buildAxisSpacing(context.footprint.gridHeight);
     const dx = endX - startX;
     const dy = endY - startY;
-    const xCount = Math.max(1, Math.floor(Math.abs(dx) / Math.max(1, spacing)) + 1);
-    const yCount = Math.max(1, Math.floor(Math.abs(dy) / Math.max(1, spacing)) + 1);
-    const xStep = (dx >= 0 ? 1 : -1) * spacing;
-    const yStep = (dy >= 0 ? 1 : -1) * spacing;
+    const xCount = Math.max(
+      1,
+      Math.floor((Math.abs(dx) + spacingX * BUILDING_COUNT_FUDGE_FACTOR) / spacingX),
+    );
+    const yCount = Math.max(
+      1,
+      Math.floor((Math.abs(dy) + spacingY * BUILDING_COUNT_FUDGE_FACTOR) / spacingY),
+    );
+    const xStep = (dx >= 0 ? 1 : -1) * spacingX;
+    const yStep = (dy >= 0 ? 1 : -1) * spacingY;
 
     // Recoil/BAR hollow-box ordering is directional: it starts from the
     // drag anchor corner and walks the signed rectangle perimeter instead
@@ -356,14 +399,16 @@ export class Input3DBuildPlacementState {
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
     const dx = endX - startX;
     const dy = endY - startY;
-    const spacingX = Math.max(1, context.footprint.gridWidth)
-      * BUILD_GRID_CELL_SIZE
-      * this.buildLineSpacingMultiplier;
-    const spacingY = Math.max(1, context.footprint.gridHeight)
-      * BUILD_GRID_CELL_SIZE
-      * this.buildLineSpacingMultiplier;
-    const xCount = Math.max(1, Math.floor(Math.abs(dx) / Math.max(1, spacingX)) + 1);
-    const yCount = Math.max(1, Math.floor(Math.abs(dy) / Math.max(1, spacingY)) + 1);
+    const spacingX = this.buildAxisSpacing(context.footprint.gridWidth);
+    const spacingY = this.buildAxisSpacing(context.footprint.gridHeight);
+    const xCount = Math.max(
+      1,
+      Math.floor((Math.abs(dx) + spacingX * BUILDING_COUNT_FUDGE_FACTOR) / spacingX),
+    );
+    const yCount = Math.max(
+      1,
+      Math.floor((Math.abs(dy) + spacingY * BUILDING_COUNT_FUDGE_FACTOR) / spacingY),
+    );
     const xStep = (dx >= 0 ? 1 : -1) * spacingX;
     const yStep = (dy >= 0 ? 1 : -1) * spacingY;
 
@@ -383,8 +428,73 @@ export class Input3DBuildPlacementState {
     return context.placements;
   }
 
+  /** Shift+Ctrl over a structure in BAR wraps the selected building around
+   *  that target. The side order and fitted perimeter mirror
+   *  gui_pregame_build.lua; each side receives its own inward facing. */
+  planBuildAroundPlacements(
+    buildingBlueprintId: BuildingBlueprintId,
+    target: Entity,
+    entitySource: BuildPlacementEntitySource,
+  ): BuildAreaPlacementPlan[] {
+    if (target.building === null || target.buildingBlueprintId === null) return [];
+    const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
+    const targetConfig = getBuildingConfig(target.buildingBlueprintId);
+    const targetFootprint = getRotatedBuildingPlacementFootprint(
+      targetConfig.placementFootprint,
+      target.transform.rotation,
+    );
+    const currentWidth = context.footprint.gridWidth * BUILD_GRID_CELL_SIZE;
+    const currentHeight = context.footprint.gridHeight * BUILD_GRID_CELL_SIZE;
+    const targetWidth = targetFootprint.gridWidth * BUILD_GRID_CELL_SIZE;
+    const targetHeight = targetFootprint.gridHeight * BUILD_GRID_CELL_SIZE;
+    const widthCount = Math.max(1, Math.ceil((targetWidth + 2 * currentWidth) / currentWidth));
+    const heightCount = Math.max(1, Math.ceil((targetHeight + 2 * currentHeight) / currentHeight));
+    const startX = target.transform.x - widthCount * currentWidth / 2 + currentWidth / 2;
+    const startY = target.transform.y - heightCount * currentHeight / 2 + currentHeight / 2;
+
+    // Local building forward is +X. Top/bottom and left/right therefore use
+    // these exact quarter turns to face the target rather than all retaining
+    // the currently selected direction.
+    const topRotation = -BUILDING_ROTATION_STEP_RAD;
+    const bottomRotation = BUILDING_ROTATION_STEP_RAD;
+    const leftRotation = 0;
+    const rightRotation = Math.PI;
+    const topY = target.transform.y + targetHeight / 2 + currentHeight / 2;
+    const bottomY = target.transform.y - targetHeight / 2 - currentHeight / 2;
+    const leftX = target.transform.x - targetWidth / 2 - currentWidth / 2;
+    const rightX = target.transform.x + targetWidth / 2 + currentWidth / 2;
+
+    for (let i = 0; i < widthCount; i++) {
+      const x = startX + i * currentWidth;
+      this.tryAddPlannedBuildPlacement(context, x, topY, false, topRotation);
+    }
+    for (let i = 0; i < widthCount; i++) {
+      const x = startX + i * currentWidth;
+      this.tryAddPlannedBuildPlacement(context, x, bottomY, false, bottomRotation);
+    }
+    for (let i = 0; i < heightCount; i++) {
+      const y = startY + i * currentHeight;
+      this.tryAddPlannedBuildPlacement(context, leftX, y, false, leftRotation);
+    }
+    for (let i = 0; i < heightCount; i++) {
+      const y = startY + i * currentHeight;
+      this.tryAddPlannedBuildPlacement(context, rightX, y, false, rightRotation);
+    }
+    return context.placements;
+  }
+
   private get buildLineSpacingMultiplier(): number {
-    return 1 + this.buildLineSpacingSteps * BUILD_LINE_SPACING_STEP;
+    if (this.activeBuildingBlueprintId === null) {
+      return 1 + this.buildLineSpacingSteps * 0.5;
+    }
+    const footprint = getBuildingConfig(this.activeBuildingBlueprintId).placementFootprint;
+    const baseCells = Math.max(1, footprint.gridWidth, footprint.gridHeight);
+    return (baseCells + this.buildLineSpacingSteps * 2) / baseCells;
+  }
+
+  private buildAxisSpacing(footprintCells: number): number {
+    return Math.max(1, footprintCells + this.buildLineSpacingSteps * 2)
+      * BUILD_GRID_CELL_SIZE;
   }
 
   private createPlannedBuildPlacementContext(
@@ -419,12 +529,14 @@ export class Input3DBuildPlacementState {
     worldX: number,
     worldY: number,
     requireMetal = false,
+    rotation = this.buildFacingRotation,
   ): void {
+    if (context.placements.length >= MAX_DRAG_BUILD_PLACEMENTS) return;
     const snapped = getSnappedBuildPosition(
       worldX,
       worldY,
       context.buildingBlueprintId,
-      this.buildFacingRotation,
+      rotation,
     );
     const key = cellKey(snapped.gridX, snapped.gridY);
     if (context.planned.has(key)) return;
@@ -439,7 +551,7 @@ export class Input3DBuildPlacementState {
       this.metalDeposits,
       context.plannedOccupiedCells,
       context.terrainBuildabilityGrid,
-      this.buildFacingRotation,
+      rotation,
     );
     if (!diagnostics.canPlace) return;
     if (requireMetal && (diagnostics.metalCoveredCells ?? 0) <= 0) return;
@@ -450,8 +562,15 @@ export class Input3DBuildPlacementState {
       gridY: diagnostics.gridY,
       x: diagnostics.x,
       y: diagnostics.y,
+      rotation,
     });
-    for (const cell of context.footprint.cells) {
+    const footprint = rotation === this.buildFacingRotation
+      ? context.footprint
+      : getRotatedBuildingPlacementFootprint(
+          getBuildingConfig(context.buildingBlueprintId).placementFootprint,
+          rotation,
+        );
+    for (const cell of footprint.cells) {
       context.plannedOccupiedCells.add(
         cellKey(diagnostics.gridX + cell.dx, diagnostics.gridY + cell.dy),
       );

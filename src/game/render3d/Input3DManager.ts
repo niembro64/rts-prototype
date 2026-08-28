@@ -2892,13 +2892,16 @@ export class Input3DManager {
       return;
     }
 
-    // BAR build placement: mouse4/mouse5 (browser buttons 3/4) step build
-    // spacing while placing, same code path as the Alt+X / Alt+Z hotkeys.
+    // BAR gui_buildspacing.lua: Lua mouse4/mouse5 map to DOM buttons 3/4.
+    // They act only during Shift or Shift+Alt build placement, with mouse4
+    // widening and mouse5 tightening the remembered per-building gap.
     if (e.button === 3 || e.button === 4) {
       if (!this.mode.isInBuildMode) return;
+      const modifiers = effectiveQueueModifierEvent(e);
+      if (!modifiers.shiftKey || modifiers.ctrlKey || modifiers.metaKey) return;
       e.preventDefault();
-      if (e.button === 3) this.decreaseBuildLineSpacing();
-      else this.increaseBuildLineSpacing();
+      if (e.button === 3) this.increaseBuildLineSpacing();
+      else this.decreaseBuildLineSpacing();
       return;
     }
 
