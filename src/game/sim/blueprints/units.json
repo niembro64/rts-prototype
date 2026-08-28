@@ -1698,7 +1698,7 @@
       "physicsPresetId": "amphibious-bot",
       "physics": {
         "ground": {
-          "maxPropulsiveForce": 260
+          "maxPropulsiveForce": 40
         },
         "air": {
           "maxPropulsiveForce": 0,
@@ -1708,7 +1708,7 @@
           }
         },
         "water": {
-          "maxPropulsiveForce": 260,
+          "maxPropulsiveForce": 40,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -4572,14 +4572,14 @@
           "maxPropulsiveForce": 0
         },
         "air": {
-          "maxPropulsiveForce": 50,
+          "maxPropulsiveForce": 15,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 14000,
             "surfaceFollowingInverseForceFromWater": 20000
           }
         },
         "water": {
-          "maxPropulsiveForce": 50,
+          "maxPropulsiveForce": 15,
           "lift": {
             "surfaceFollowingInverseForceFromGround": 0,
             "surfaceFollowingProportionalForceFromWater": 0
@@ -4825,7 +4825,7 @@
       "physicsPresetId": "crawler",
       "physics": {
         "ground": {
-          "maxPropulsiveForce": 160
+          "maxPropulsiveForce": 25
         },
         "air": {
           "maxPropulsiveForce": 0,
