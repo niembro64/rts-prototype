@@ -2616,6 +2616,17 @@
         the edge of its content is the frame, and a stroke around it would only be a second
         outline competing with the camera footprint.
       </p>
+      <p>
+        The three direction arrows are world readings, not decorative screen-space icons. In the
+        top bar, the red compass arrow is the complete world-north vector, the yellow sunlight
+        arrow is the direction light travels (opposite the world-to-sun vector), and the blue wind
+        arrow is the live wind vector; all three are transformed through the camera&rsquo;s full 3D
+        right/up/toward basis, so camera yaw and pitch may point an arrow into or out of the screen.
+        The minimap repeats the same red/yellow/blue trio as plan-view 2D projections, ordered north,
+        sunlight, then wind. North points to the map&rsquo;s top, sunlight keeps its horizontal travel
+        direction, and wind keeps its horizontal direction and speed-scaled length; only a zero-speed
+        wind suppresses its arrow.
+      </p>
 
       <h3>Focus altitude is a config axis; the canonical mode is constant altitude</h3>
       <p>
@@ -4232,7 +4243,8 @@
         the T2 Universal. The radial Universal body widths are exactly 10, 16, and 24 build-grid
         cells at T1/T2/T3. Each ring&rsquo;s hover height is derived from the tallest authored
         <em>visible</em> envelope in that exact production roster, including raised turret/barrel
-        geometry, plus the larger of 8 world units or 8%; collision diameter is not a height proxy.
+        geometry, and is exactly <strong>2.2 times</strong> that unit-top height above the ground;
+        collision diameter is not a height proxy.
         The T2 Aircraft Fabricator&rsquo;s flight deck also sits higher than the T1 deck.</li>
         <li><strong>Menu-size target.</strong> About five entries per T1/T2 specialist &mdash;
         twenty specialist menu entries at each of those tiers, counted as entries rather than unique units,
@@ -4836,7 +4848,8 @@
         reservation. It has no ground collision body, blocks no locomotion cell, and casts no
         clearance. Its physical presence is a static annular ring floating at the combat center
         that matches the visible torus &mdash; aircraft collide with the ring, ground units drive
-        underneath (the hover height clears the tallest unit by design), and released production
+        underneath (the hover height is 2.2 times the tallest producible visible unit-top height),
+        and released production
         shells fall through the open center hole. Units that spawn overlapping the footprint carry
         the standard ignore-static pair until they leave, so the structure never traps what it
         builds.

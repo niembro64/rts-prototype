@@ -518,8 +518,9 @@ export function runUnitLocomotionContractTest(): void {
       `${unitBlueprintId} is a land bot: no water waypoints and it drowns`,
     );
   }
+  const rex = getUnitLocomotion('unitRex');
   assertContract(
-    getUnitLocomotion('unitRex').physicsPresetId === 'amphibious-bot',
+    rex.physicsPresetId === 'amphibious-bot',
     'Rex is an amphibious bot',
   );
   const commander = getUnitLocomotion('unitCommander');
@@ -546,8 +547,17 @@ export function runUnitLocomotionContractTest(): void {
     'Eagle has explicit air navigation and air propulsion',
   );
   const eagleMass = getUnitBlueprint('unitEagle').base.mass;
-  const bee = getUnitLocomotion('unitBee');
-  const beeMass = getUnitBlueprint('unitBee').base.mass;
+  const dragonfly = getUnitLocomotion('unitDragonfly');
+  const dragonflyMass = getUnitBlueprint('unitDragonfly').base.mass;
+  const constructionDrone = getUnitLocomotion('unitConstructionDrone');
+  const constructionDroneMass = getUnitBlueprint('unitConstructionDrone').base.mass;
+  assertContract(
+    dragonfly.physics.air.maxPropulsiveForce === 0.16 &&
+      dragonfly.physics.water.maxPropulsiveForce === 0.16 &&
+      dragonfly.physics.air.maxPropulsiveForce / dragonflyMass <
+        constructionDrone.physics.air.maxPropulsiveForce / constructionDroneMass,
+    'Dragonfly has a modest propulsion boost while remaining the deliberately slow heavy drone',
+  );
   // The Albatros is the lumbering heavy: half Eagle-class acceleration (so
   // half the cruise speed under the same air damping) and an authored yaw slew
   // far below the plane preset's, so its turning circle is much wider.
@@ -566,21 +576,33 @@ export function runUnitLocomotionContractTest(): void {
     'Albatros overrides the preset yaw slew to a fraction of the Eagle rate for a much wider turning circle',
   );
   const queenTick = getUnitLocomotion('unitQueenTick');
+  const queenTickMass = getUnitBlueprint('unitQueenTick').base.mass;
   assertContract(
     queenTick.physicsPresetId === 'crawler' &&
-      queenTick.physics.ground.maxPropulsiveForce > 0 &&
+      queenTick.physics.ground.maxPropulsiveForce === 25 &&
       queenTick.physics.air.maxPropulsiveForce === 0 &&
       queenTick.navigation.waypoint.allowOnGround &&
       !queenTick.navigation.waypoint.allowInAir,
-    'Queen Tick walks on legs with ground propulsion and no flight capability',
+    'Queen Tick walks slowly on legs with ground propulsion and no flight capability',
   );
   const queenBee = getUnitLocomotion('unitQueenBee');
   const queenBeeMass = getUnitBlueprint('unitQueenBee').base.mass;
+  const rexMass = getUnitBlueprint('unitRex').base.mass;
+  const rexGroundSpeedScale = rex.physics.ground.maxPropulsiveForce /
+    (rexMass * rex.physics.ground.tangentialDampingRate);
+  const queenTickGroundSpeedScale = queenTick.physics.ground.maxPropulsiveForce /
+    (queenTickMass * queenTick.physics.ground.tangentialDampingRate);
+  const queenBeeAirSpeedScale = queenBee.physics.air.maxPropulsiveForce /
+    (queenBeeMass * queenBee.physics.air.resistance.linearDampingRate);
   assertContract(
-    queenBee.physics.air.maxPropulsiveForce / queenBeeMass >=
-      bee.physics.air.maxPropulsiveForce / beeMass &&
-      queenBee.physics.water.maxPropulsiveForce === queenBee.physics.air.maxPropulsiveForce,
-    'Queen Bee authors Bee-class air acceleration and matching emergency water propulsion',
+    rex.physics.ground.maxPropulsiveForce === 40 &&
+      rex.physics.water.maxPropulsiveForce === 40 &&
+      queenBee.physics.air.maxPropulsiveForce === 15 &&
+      queenBee.physics.water.maxPropulsiveForce === 15 &&
+      rexGroundSpeedScale < queenTickGroundSpeedScale &&
+      Math.abs(queenBeeAirSpeedScale - queenTickGroundSpeedScale) <
+        queenTickGroundSpeedScale * 0.05,
+    'Rex must be the slowest titan while Queen Tick and Queen Bee share the slower capstone speed band',
   );
   const orca = getUnitLocomotion('unitOrca');
   assertContract(

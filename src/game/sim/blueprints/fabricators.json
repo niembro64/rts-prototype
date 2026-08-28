@@ -211,7 +211,7 @@
     "constructionRate": 200,
     "workEmitter": {
       "points": [
-        { "x": 0, "y": 0, "z": 211.68 }
+        { "x": 0, "y": 0, "z": 431.2 }
       ],
       "particleTravelSpeed": 200,
       "particleRadius": 1.5,
@@ -229,7 +229,7 @@
       {
         "turretBlueprintId": "turretSensorBuildingFabricator",
         "presentation": null,
-        "mount": { "x": -147.2, "y": 0, "z": 211.68 },
+        "mount": { "x": -147.2, "y": 0, "z": 431.2 },
         "mountId": "sensor",
         "controlMode": "autonomous"
       }
@@ -478,7 +478,7 @@
     "constructionRate": 400,
     "workEmitter": {
       "points": [
-        { "x": 0, "y": 0, "z": 405.756 }
+        { "x": 0, "y": 0, "z": 826.54 }
       ],
       "particleTravelSpeed": 200,
       "particleRadius": 1.5,
@@ -499,7 +499,7 @@
       {
         "turretBlueprintId": "turretSensorBuildingFabricator",
         "presentation": null,
-        "mount": { "x": -220.8, "y": 0, "z": 405.756 },
+        "mount": { "x": -220.8, "y": 0, "z": 826.54 },
         "mountId": "sensor",
         "controlMode": "autonomous"
       }

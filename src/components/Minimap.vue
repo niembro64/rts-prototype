@@ -13,6 +13,7 @@ import {
   getLiquidSurfaceMode,
   liquidSurfaceExists,
 } from '@/game/sim/worldSurfaceState';
+import { SUN_LIGHT_TRAVEL_SIM } from '@/game/render3d/SunLighting';
 
 import type { MinimapData } from '@/types/ui';
 
@@ -39,6 +40,7 @@ const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
 const MINIMAP_PANEL = COLORS.ui.minimap.panel;
 const MINIMAP_WIND_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.wind.colorHex);
 const MINIMAP_COMPASS_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.north.colorHex);
+const MINIMAP_SUN_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.sun.colorHex);
 const MINIMAP_ARROW_HALO = 'rgba(0, 0, 0, 0.78)';
 
 const props = withDefaults(defineProps<{
@@ -406,12 +408,28 @@ function drawInstrumentLayer(
   if (shortestSide < 82) return;
   const inset = Math.max(16, Math.min(24, shortestSide * 0.07));
   const compassLength = Math.max(16, Math.min(24, shortestSide * 0.065));
+  const sunLength = Math.max(16, Math.min(24, shortestSide * 0.065));
   const windLengthBase = Math.max(15, Math.min(23, shortestSide * 0.06));
+  const arrowGap = Math.max(6, Math.min(10, shortestSide * 0.025));
   const cx = w - inset;
   const windCy = h - inset;
-  const compassCy = windCy - compassLength - 14;
+  const sunCy = windCy - Math.max(sunLength, windLengthBase) - arrowGap;
+  const compassCy = sunCy - Math.max(compassLength, sunLength) - arrowGap;
 
   drawMapArrow(ctx, cx, compassCy, 0, -1, compassLength, MINIMAP_COMPASS_STROKE);
+
+  const sunHorizontalLength = Math.hypot(SUN_LIGHT_TRAVEL_SIM.x, SUN_LIGHT_TRAVEL_SIM.y);
+  if (sunHorizontalLength > 1e-6) {
+    drawMapArrow(
+      ctx,
+      cx,
+      sunCy,
+      SUN_LIGHT_TRAVEL_SIM.x / sunHorizontalLength,
+      SUN_LIGHT_TRAVEL_SIM.y / sunHorizontalLength,
+      sunLength,
+      MINIMAP_SUN_STROKE,
+    );
+  }
 
   const wind = props.data.wind;
   if (!wind || wind.speed <= 1e-6) return;

@@ -31,6 +31,7 @@ import {
   fabricatorHoverHeightForMaxUnitVisualHeight,
   fabricatorTorusOuterRadius,
   fabricatorTorusRingRadius,
+  UNIVERSAL_FABRICATOR_TALLEST_UNIT_HEIGHT_MULTIPLIER,
 } from './fabricatorGeometry';
 import { fabricatorConstructionEmitterHeight } from './fabricatorConstructionRing';
 import { getConstructionHostMarkingProfiles } from '@/constructionVisualConfig';
@@ -592,9 +593,10 @@ function assertFactoryShellContract(): void {
     const tallestVisual = maxUnitVisualHeightForFabricator(fabricatorId);
     const hoverHeight = fabricatorTorusHoverHeight(fabricatorId);
     assertContract(
+      UNIVERSAL_FABRICATOR_TALLEST_UNIT_HEIGHT_MULTIPLIER === 2.2 &&
       hoverHeight === fabricatorHoverHeightForMaxUnitVisualHeight(tallestVisual) &&
-        hoverHeight > tallestVisual,
-      `${fabricatorId} must hover with clearance above its tallest producible unit`,
+        hoverHeight === tallestVisual * 2.2,
+      `${fabricatorId} must hover at 2.2x its tallest producible unit's visible top`,
     );
   }
 

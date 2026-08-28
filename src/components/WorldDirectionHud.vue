@@ -11,7 +11,7 @@ import {
   createPrimitiveConeGeometry,
   createPrimitiveCylinderGeometry,
 } from '@/game/render3d/PrimitiveGeometryQuality3D';
-import { SUN_DIRECTION_SIM } from '@/game/render3d/SunLighting';
+import { SUN_LIGHT_TRAVEL_SIM } from '@/game/render3d/SunLighting';
 import { SUN_RENDER_CONFIG } from '@/config';
 
 const props = defineProps<{
@@ -21,13 +21,6 @@ const props = defineProps<{
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
 const sunCanvasRef = ref<HTMLCanvasElement | null>(null);
-/** SUN_DIRECTION_SIM points from the world toward the sun; the HUD arrow
- *  shows the direction the light travels, so it is negated. */
-const SUN_LIGHT_TRAVEL_SIM = Object.freeze({
-  x: -SUN_DIRECTION_SIM.x,
-  y: -SUN_DIRECTION_SIM.y,
-  z: -SUN_DIRECTION_SIM.z,
-});
 const sunElevationLabel = `${Math.round((SUN_RENDER_CONFIG.elevationRad * 180) / Math.PI)}°`;
 const windSpeedLabel = computed(() => {
   void props.data.directionVersion;
@@ -368,7 +361,13 @@ function renderHud(now: number): void {
 
   let changed = needsRender;
   writeWorldVectorInView(0, -1, 0, viewDirection);
-  applyViewArrowDirection(compassView, compassRig, viewDirection.x, viewDirection.y, 0);
+  applyViewArrowDirection(
+    compassView,
+    compassRig,
+    viewDirection.x,
+    viewDirection.y,
+    viewDirection.z,
+  );
 
   writeWorldVectorInView(
     SUN_LIGHT_TRAVEL_SIM.x,
@@ -424,12 +423,45 @@ function drawLowMemoryArrow(
   const height = canvas.height;
   const cx = width * 0.5;
   const cy = height * 0.5;
-  const len = Math.hypot(direction.x, direction.y);
-  if (len <= 1e-6) return;
-  const ux = direction.x / len;
-  const uy = -direction.y / len;
-  const length = Math.min(width, height) * 0.34 * scale;
-  const head = Math.max(7, length * 0.32);
+  const vectorLength = direction.length();
+  if (vectorLength <= 1e-6) return;
+  const projectedLength = Math.hypot(direction.x, direction.y);
+  const projectedFraction = projectedLength / vectorLength;
+  if (projectedFraction <= 0.18) {
+    const radius = Math.min(width, height) * 0.12 * scale;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.78)';
+    ctx.lineWidth = Math.max(5, width * 0.06);
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, width * 0.025);
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    if (direction.z >= 0) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(2, radius * 0.24), 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const cross = radius * 0.48;
+      ctx.beginPath();
+      ctx.moveTo(cx - cross, cy - cross);
+      ctx.lineTo(cx + cross, cy + cross);
+      ctx.moveTo(cx + cross, cy - cross);
+      ctx.lineTo(cx - cross, cy + cross);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+  const ux = direction.x / projectedLength;
+  const uy = -direction.y / projectedLength;
+  const length = Math.min(width, height) * 0.34 * scale * projectedFraction;
+  const head = Math.max(3, length * 0.32);
   const tailX = cx - ux * length * 0.48;
   const tailY = cy - uy * length * 0.48;
   const headX = cx + ux * length * 0.52;

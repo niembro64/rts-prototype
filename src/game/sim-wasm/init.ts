@@ -1699,6 +1699,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         await runGameCanvasChromeStateDefaultsContractTest();
         const { runBarControlsWrappingContractTest } = await import('../../components/BarControlsWrappingContractTest');
         runBarControlsWrappingContractTest();
+        const { runWorldDirectionHudContractTest } = await import('../../components/WorldDirectionHudContractTest');
+        runWorldDirectionHudContractTest();
         const { runGuardFollowContractTest } = await import('../sim/guardFollowContractTest');
         runGuardFollowContractTest();
         const { runGuardParityContractTest } = await import('../sim/guardParityContractTest');
