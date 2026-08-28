@@ -110,6 +110,7 @@ function createUnitBaseEntity({
       pathFailureStreak: 0,
       pathRetryAtTick: 0,
       pathFailureActionHash: 0,
+      pathNavGoalUnreachableActionHash: 0,
       pathFailureCellKey: -1,
       pathFailureTerrainVersion: -1,
       pathFailureBuildingGridVersion: -1,

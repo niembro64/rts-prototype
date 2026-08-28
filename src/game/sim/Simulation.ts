@@ -1416,6 +1416,15 @@ export class Simulation {
     entity: Entity,
     action: UnitAction,
   ): { x: number; y: number } | null {
+    // A stand-off that already proved UNREACHABLE for this exact order (a
+    // passable pocket on a steep face, a walled courtyard) is never offered
+    // again: every consumer — direct probe, coarse first leg, cache keys,
+    // the queued search — falls back to the authored action point, which
+    // the kernel snaps to its nearest open ground.
+    const unit = entity.unit;
+    if (unit !== null && unit.pathNavGoalUnreachableActionHash === unit.actionHash) {
+      return null;
+    }
     // Attack orders approach to WEAPON range, not to the target's center —
     // BAR's move-goal-with-radius semantics. Without this a unit whose gun
     // is reloading or out of arc keeps walking into the target, and an
@@ -1869,6 +1878,18 @@ export class Simulation {
     unit.pathRequestForceLocal = false;
     this.recordPathQueryOutcome(unit, result.plan.resolution, result.strategy);
     if (result.plan.resolution === 'unreachable') {
+      // A search aimed at a DERIVED stand-off goal (build/attack approach
+      // point) saying "unreachable" has only proven that the stand-off is
+      // stranded — goal snapping requires a passable cell, not a connected
+      // one. Retry at once aimed at the authored action point before
+      // concluding anything about the order itself.
+      const aimedAtDerivedGoal = job.formationRoute === null &&
+        (job.goalX !== job.actionSnapshot.x || job.goalY !== job.actionSnapshot.y);
+      if (aimedAtDerivedGoal && unit.pathNavGoalUnreachableActionHash !== unit.actionHash) {
+        unit.pathNavGoalUnreachableActionHash = unit.actionHash;
+        this.pathPlanScheduler.requestRefine(entity, job.forceLocal);
+        return { status: 'complete', expansionsUsed: result.expansionsUsed };
+      }
       // The body cannot leave where it stands (or nothing reachable exists).
       // Retrying next tick recomputes identical inputs; back off
       // exponentially and, past the give-up count, drop the order — BAR:

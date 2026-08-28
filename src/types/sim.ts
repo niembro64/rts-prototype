@@ -263,6 +263,13 @@ export type Unit = {
   pathRetryAtTick: number;
   /** actionHash the failure streak belongs to; a different hash resets it. */
   pathFailureActionHash: number;
+  /** actionHash whose derived stand-off navigation goal (build/attack
+   *  approach point) proved UNREACHABLE — a passable pocket on a steep face,
+   *  a walled courtyard. While it matches the live actionHash the planner
+   *  aims every route at the authored action point instead (the kernel snaps
+   *  a blocked center to its nearest open ground), so one doomed stand-off
+   *  can never strand the order. 0 = no such failure. */
+  pathNavGoalUnreachableActionHash: number;
   /** Navigation-grid cell the unit stood in when its last request failed
    *  (-1 = none). A different cell is new information: retry at once. */
   pathFailureCellKey: number;

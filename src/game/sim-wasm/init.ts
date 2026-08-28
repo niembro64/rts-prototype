@@ -1884,6 +1884,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runPathPlanSafetyContractTest();
         const { runMassMovePathBudgetContractTest } = await import('../sim/massMovePathBudgetContractTest');
         runMassMovePathBudgetContractTest();
+        const { runBuildApproachGoalFallbackContractTest } = await import('../sim/buildApproachGoalFallbackContractTest');
+        runBuildApproachGoalFallbackContractTest();
         const { runDeathExplosionChainBudgetContractTest } = await import('../sim/deathExplosionChainBudgetContractTest');
         runDeathExplosionChainBudgetContractTest();
         const { runBuildGridChangeLogContractTest } = await import('../sim/buildGridChangeLogContractTest');

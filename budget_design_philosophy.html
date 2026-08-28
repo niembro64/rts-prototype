@@ -1648,7 +1648,17 @@
         because those are the only things that can change the answer. Retrying identical inputs
         every tick is the failure the backoff exists to prevent; giving up was a different failure,
         hidden as &ldquo;the unit stopped&rdquo;. An unreachable <em>goal</em> is not a failure at
-        all: the route snaps to the nearest reachable cell and the unit goes as close as it can. Air
+        all: the route snaps to the nearest open cell and the unit goes as close as it can. Snapping
+        requires a <em>passable</em> cell, not a connected one, and a build or attack order&rsquo;s
+        navigation goal is a <em>derived</em> stand-off (the approach point pulled from the site
+        toward the unit) &mdash; so a stand-off can land in a passable pocket (a terrace on a steep
+        rugged face, a walled courtyard) and search to unreachable while the site itself is
+        perfectly reachable. One unreachable verdict for a derived goal therefore re-aims the same
+        queued request at the <em>authored action point</em> at once &mdash; no backoff, no
+        route-blocked mark &mdash; and only the action point&rsquo;s own unreachable verdict counts
+        against the order (<code>buildApproachGoalFallbackContractTest</code>; before this rule a
+        builder sent to a mex site whose approach cell was stranded stood still forever, burning an
+        unreachable search per retry, while a plain move to the same spot routed instantly). Air
         bodies take a validated straight line at any distance and never enter a queue. A factory
         releases its product only onto a cell the product's class can stand in: a hull built by a
         shoreline fabricator whose hold or exit point lies on the beach is released at the nearest
@@ -1715,6 +1725,7 @@
         <li><strong>2026-08-26</strong>: the synchronous export, the <code>null</code>-budget branch and the command-time resolver were deleted; formation slots are installed as intent like the group-move branch always was; the contract test above pins the rule.</li>
         <li><strong>2026-08-26</strong> (later): the per-side rotation with one retained frontier per ally team became the per-player two-queue quantum round-robin described above, the six-strike give-up that dropped orders was deleted in favour of state-triggered retry, air bodies stopped entering the queue, the hierarchy class cache stopped evicting graphs still in play, building churn stopped restarting every retained search, illegal start cells became escape starts, and the demo's opening wave stopped dropping hulls on land (87% of all unreachable results). Measured before (4 bots, 60 s): 275 unreachable results, 9 dropped orders, 62% of refine admissions within 1 tick, 18% waiting more than 1.6 s. After: 0 dropped orders by construction, 326 units moving on a first leg within a tick, 65% of refine admissions within 1 tick; the remaining unreachable results are transient shoreline beachings that recover, and full-route latency is bounded by per-class hierarchy row builds (see the rule list).</li>
         <li><strong>2026-08-27</strong>: the opening wave and every offshore line stopped trusting the first wet cell a ray or a ring meets. Water hulls launch from a uniform, without-replacement sample of every padded open-water cell whose exact map-centre reflection is also open water, then patrol between those two reflected points. Offshore rows still anchor on each seat&rsquo;s measured deep-water radius, and offshore footprints are proven cell by cell (see <em>Initialized-base rule</em> and <em>Shore margins are measured, never assumed</em>), so shoreline beachings are excluded by construction rather than recovered from.</li>
+        <li><strong>2026-08-27</strong> (later): a build order aimed across a steep mountain could stand its builder still forever while a plain move to the same spot routed instantly. Not a queue violation this time but a goal defect: the derived stand-off approach point landed on the mountain-facing side of the site, goal snapping only requires a passable cell, and a passable-but-disconnected pocket searched to unreachable on every state-triggered retry. The fallback above (one derived-goal unreachable verdict &rarr; re-aim at the authored action point) closed it; <code>buildApproachGoalFallbackContractTest</code> pins both the recovery and its cost ceiling.</li>
       </ul>
 
       <h3>Force models answer gravity; constant-speed guidance preserves velocity</h3>
