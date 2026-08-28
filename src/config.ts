@@ -434,11 +434,18 @@ export const WATER_RENDER_CONFIG = {
 } as const;
 
 /** LIQUID = LAVA replacement surface. Always opaque (nothing sees through
- *  molten rock) and authored ABOVE the display range: the emissive scale is
- *  applied before tone mapping while the renderer wind-advects three scales
- *  of generated crust, leaving dark plates around pulsing orange fissures. */
+ *  molten rock). A dark cooling-crust palette sits over separately advected
+ *  molten rifts and hot upwellings; only the exposed melt is scaled above the
+ *  display range before tone mapping. */
 export const LAVA_RENDER_CONFIG = {
-  color: COLORS.world.water.lava.colorHex,
+  curtainColor: COLORS.world.water.lava.curtainColorHex,
+  palette: {
+    coldCrust: COLORS.world.water.lava.palette.coldCrustColorHex,
+    warmCrust: COLORS.world.water.lava.palette.warmCrustColorHex,
+    molten: COLORS.world.water.lava.palette.moltenColorHex,
+    hot: COLORS.world.water.lava.palette.hotColorHex,
+    core: COLORS.world.water.lava.palette.coreColorHex,
+  },
   emissiveScale: COLORS.world.water.lava.emissiveScale,
   texture: readLiquidSurfaceTextureConfig(
     COLORS.world.water.lava.texture,

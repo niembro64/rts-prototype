@@ -34,7 +34,7 @@ const backdropPalette = {
   skyMid: colorsWorld.sky.midColor,
   skyHorizon: colorsWorld.sky.horizonColor,
   water: colorsWorld.water.colorHex,
-  lava: colorsWorld.water.lava.colorHex,
+  lava: colorsWorld.water.lava.palette.moltenColorHex,
   outOfBounds: colorsWorld.map.outOfBounds.colorHex,
   cameraClear: colorsWorld.map.cameraClear.colorHex,
   inBounds: colorsWorld.map.inBounds.colorHex,

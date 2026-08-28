@@ -281,42 +281,42 @@
       "width": 4096
     },
     {
-      "bytes": 172174,
+      "bytes": 172704,
       "file": "metal-hell-near.ktx2",
       "hasAlpha": true,
       "height": 2048,
       "layer": "near",
-      "sha256": "b8df81ab8b78f82bb75732d9144a896e94b2d6f3ce2caded1dd0cec9f23e4d4e",
+      "sha256": "762c720eb71351757c5e374dc31a9b12fb63e5c3104e0ecb3d7f6e0ef457aeee",
       "slug": "metal-hell",
       "width": 4096
     },
     {
-      "bytes": 168746,
+      "bytes": 168288,
       "file": "metal-hell-middle.ktx2",
       "hasAlpha": true,
       "height": 1536,
       "layer": "middle",
-      "sha256": "2323aa6635db523cd7026fd1ee3bf69442ca768f8d9db3deff14c7e8ab37231b",
+      "sha256": "3d368eafbdae6eba3242d0c6cf7775b74edbb141c2f8f2e172cf64c3e9fb50b1",
       "slug": "metal-hell",
       "width": 3072
     },
     {
-      "bytes": 167676,
+      "bytes": 154860,
       "file": "metal-hell-far.ktx2",
       "hasAlpha": true,
       "height": 1024,
       "layer": "far",
-      "sha256": "99efd559fe343b2401a68d3a92d799228f210102ffe2f99704e123eb60d83a46",
+      "sha256": "1446947dcd6e4fec327f8dfb196f56599fafacba3df1cb45a124434dbdd4a73e",
       "slug": "metal-hell",
       "width": 2048
     },
     {
-      "bytes": 32053,
+      "bytes": 30661,
       "file": "metal-hell-terminal.ktx2",
       "hasAlpha": false,
       "height": 2048,
       "layer": "terminal",
-      "sha256": "da90558e807e51a0ac70b02b3e0ae7b407192a87088322427dca34b2e8fbaabc",
+      "sha256": "a28978f6c8832cf098293d2ced18d71f5b017f769e31c806eabbf95751ace609",
       "slug": "metal-hell",
       "width": 4096
     },
@@ -375,12 +375,12 @@
     "yFlippedForThreeJsUv": true,
     "zstandardLevel": 9
   },
-  "fingerprint": "2901cd5aefd5f9438ca8924afcb8df0a078a5f65dddd7b8a30a287379d9812ac",
+  "fingerprint": "e4572aabf2b8d8e6a43bc8ee0c38ce6fa91e1678af7249ffc2b453da6d9ac2b5",
   "generator": {
     "visualRevision": 1
   },
   "inputHashes": {
-    "backdropPaletteSha256": "d830ad7267df4335ec9d3940080588e6db189ba9cebe18fce45ecbbc29b7a1bd",
+    "backdropPaletteSha256": "e4509b837af0533e9271d87fe104f9a438c2912d1dd2c5ca0af81a5647223e41",
     "presetBackdropConfigSha256": "331911a25c93bb4ebb281a08fbc432f6c67701f4f7dd1640cdc32f1126dccec3"
   },
   "schemaVersion": 1

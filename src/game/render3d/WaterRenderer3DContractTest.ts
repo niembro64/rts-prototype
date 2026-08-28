@@ -186,7 +186,7 @@ export function runWaterRenderer3DContractTest(): void {
     assertContract(
       [...WATER_RENDER_CONFIG.texture.wigglePeriodsSeconds,
         ...LAVA_RENDER_CONFIG.texture.wigglePeriodsSeconds].every(isPrimeInteger),
-      'all three liquid-layer wiggles in both media must use prime-number periods',
+      'all liquid-layer random heading intervals must use prime-number durations',
     );
     const waterSplashColor = splashBirthColor('water');
     const lavaSplashColor = splashBirthColor('lava');
@@ -211,24 +211,30 @@ export function runWaterRenderer3DContractTest(): void {
         && lavaSplashColor.y > lavaSplashColor.z,
       'lava impacts must emit the authored white-hot-to-orange droplet ramp',
     );
-    const channelRange = (texture: THREE.DataTexture): number => {
+    const channelRanges = (texture: THREE.DataTexture): [number, number, number] => {
       const data = texture.image.data as Uint8Array;
-      let low = 255;
-      let high = 0;
+      const low = [255, 255, 255];
+      const high = [0, 0, 0];
       for (let index = 0; index < data.length; index += 4) {
-        low = Math.min(low, data[index], data[index + 1], data[index + 2]);
-        high = Math.max(high, data[index], data[index + 1], data[index + 2]);
+        for (let channel = 0; channel < 3; channel++) {
+          low[channel] = Math.min(low[channel], data[index + channel]);
+          high[channel] = Math.max(high[channel], data[index + channel]);
+        }
         assertContract(data[index + 3] === 255, 'texture alpha must never alter liquid opacity');
       }
-      return high - low;
+      return [high[0] - low[0], high[1] - low[1], high[2] - low[2]];
     };
-    const waterRange = channelRange(waterTexture);
-    const lavaRange = channelRange(lavaTexture);
+    const waterRanges = channelRanges(waterTexture);
+    const lavaRanges = channelRanges(lavaTexture);
     waterTexture.dispose();
     lavaTexture.dispose();
     assertContract(
-      waterRange >= 4 && waterRange <= 28 && lavaRange >= 100,
-      `water grain must stay minimal while lava reads strongly (${waterRange}/${lavaRange})`,
+      waterRanges.every((range) => range >= 4 && range <= 28)
+        && lavaRanges[0] >= 180
+        && lavaRanges[1] >= 120
+        && lavaRanges[2] >= 60,
+      'water grain must stay minimal while lava carries independent major-rift, '
+        + `fine-fracture, and thermal fields (${waterRanges.join('/')}; ${lavaRanges.join('/')})`,
     );
     // EVERY triangle of the closed box — surface, curtains, and bottom alike.
     // The perimeter is no longer four authored strips: the info annex opens
@@ -385,8 +391,8 @@ export function runWaterRenderer3DContractTest(): void {
       lavaTextureName === 'LiquidSurfaceTexture:lava'
         && !surfaceMaterial.transparent
         && surfaceMaterial.opacity === 1
-        && surfaceMaterial.userData.liquidSurfaceShader === 'lava-wind-flow-v1',
-      'lava must replace the water skin with an opaque animated crust material',
+        && surfaceMaterial.userData.liquidSurfaceShader === 'lava-viscous-flow-v2',
+      'lava must replace the water skin with the opaque viscous crust material',
     );
     const lavaShader = {
       uniforms: {} as Record<string, { value: unknown }>,
@@ -399,13 +405,23 @@ export function runWaterRenderer3DContractTest(): void {
       lavaShader.uniforms.uLiquidFlow1?.value,
       lavaShader.uniforms.uLiquidFlow2?.value,
     ] as THREE.Vector2[];
+    const lavaPaletteUniforms = [
+      lavaShader.uniforms.uLavaColdCrustColor?.value,
+      lavaShader.uniforms.uLavaWarmCrustColor?.value,
+      lavaShader.uniforms.uLavaMoltenColor?.value,
+      lavaShader.uniforms.uLavaHotColor?.value,
+      lavaShader.uniforms.uLavaCoreColor?.value,
+    ];
     assertContract(
       lavaTime !== undefined
         && lavaFlow.every((offset) => offset instanceof THREE.Vector2)
-        && lavaShader.fragmentShader.includes('lavaSecondary')
-        && lavaShader.fragmentShader.includes('lavaTertiary')
+        && lavaPaletteUniforms.every((color) => color instanceof THREE.Color)
+        && (lavaShader.uniforms.uLavaEmissiveScale?.value as number) > 1
+        && lavaShader.fragmentShader.includes('lavaRaft')
+        && lavaShader.fragmentShader.includes('lavaDetail')
+        && lavaShader.fragmentShader.includes('lavaUpwell')
         && !lavaShader.fragmentShader.includes('#include <map_fragment>'),
-      'lava shader must layer three independently advected crust fields instead of sliding one decal',
+      'lava shader must layer advected crust rafts, fracture detail, and localized hot upwellings',
     );
     const initialLavaTime = lavaTime.value as number;
     renderer.update(1, getGraphicsConfig(), undefined, { x: 0, y: 8 });
@@ -414,8 +430,14 @@ export function runWaterRenderer3DContractTest(): void {
       'lava flow time must advance with rendered time',
     );
     assertContract(
-      lavaFlow.every((offset) => offset.y > 0 && Math.abs(offset.x) < offset.y * 0.27),
+      lavaFlow.every((offset) => offset.y > 0 && Math.abs(offset.x) < offset.y * 0.55),
       'every lava layer must travel generally along the live +Y wind',
+    );
+    assertContract(
+      new Set(
+        lavaFlow.map((offset) => Math.atan2(offset.y, offset.x).toFixed(6)),
+      ).size === 3,
+      'lava layers must choose distinct pseudo-random headings around the live wind',
     );
     assertLiquidSceneCompiles(parent, mapWidth, mapHeight);
 

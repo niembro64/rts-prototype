@@ -84,13 +84,11 @@ function rgb01ToLinearColor(color: Rgb01): THREE.Color {
 const WATER_SURFACE_LINEAR_RGB = hexToLinearRgb(WATER_RENDER_CONFIG.color);
 export const WATER_SURFACE_LINEAR_COLOR = rgb01ToLinearColor(WATER_SURFACE_LINEAR_RGB);
 
-// LIQUID = LAVA surface in the same linear working space. Scaled past the
-// display range so tone mapping renders it as an emitter; the terrain's
-// horizon-rim seam-hider mixes to this when the map's liquid is lava.
-const LAVA_SURFACE_LINEAR_RGB = scaleRgb(
-  hexToLinearRgb(LAVA_RENDER_CONFIG.color),
-  Math.max(0, LAVA_RENDER_CONFIG.emissiveScale),
-);
+// The terrain's horizon-rim seam-hider cannot reproduce the animated lava
+// shader, so it meets the untextured world-box curtain at the same deep side
+// colour. Applying the molten emissive scale here would turn the entire map
+// rim into a uniform glowing stripe.
+const LAVA_SURFACE_LINEAR_RGB = hexToLinearRgb(LAVA_RENDER_CONFIG.curtainColor);
 export const LAVA_SURFACE_LINEAR_COLOR = rgb01ToLinearColor(LAVA_SURFACE_LINEAR_RGB);
 
 // Final visible water target, snapped to the 8-bit framebuffer grid.

@@ -36,17 +36,24 @@
         "wigglePeriodsSeconds": [17, 23, 31]
       },
       "lava": {
-        "colorHex": "#ff6412",
-        "emissiveScale": 1.6,
+        "curtainColorHex": "#351008",
+        "palette": {
+          "coldCrustColorHex": "#0d0908",
+          "warmCrustColorHex": "#3a1609",
+          "moltenColorHex": "#e84003",
+          "hotColorHex": "#ff9410",
+          "coreColorHex": "#ffe39a"
+        },
+        "emissiveScale": 1.45,
         "texture": {
           "sourceFile": "src/game/render3d/LiquidSurfaceTexture3D.ts",
           "resolution": 256,
-          "tileWorldSize": 720,
-          "contrast": 0.78,
-          "flowWorldUnitsPerSecond": 4.5,
-          "directionWiggleDegrees": 12,
-          "layerScales": [1, 1.83, 0.53],
-          "layerSpeedMultipliers": [1, 0.71, 1.29],
+          "tileWorldSize": 840,
+          "contrast": 0.9,
+          "flowWorldUnitsPerSecond": 3.2,
+          "directionWiggleDegrees": 26,
+          "layerScales": [0.57, 1, 2.17],
+          "layerSpeedMultipliers": [0.62, 1, 1.38],
           "wigglePeriodsSeconds": [19, 29, 37]
         }
       }
