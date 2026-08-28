@@ -10,6 +10,24 @@ import { GeometryCache3D } from './GeometryCache3D';
 
 const COMMANDER_LENS_COLOR = COLORS.units.unitCommander.lens.colorHex;
 
+const COMMANDER_BACKPACK_RADIUS_UNITS = Object.freeze({
+  x: -0.555,
+  y: 2.29,
+  z: 0,
+  halfWidth: 0.12,
+  halfHeight: 0.54,
+  halfDepth: 0.62,
+});
+
+/** BAR's Armada commander mounts its spinning `dish` on the upper rear
+ * torso. This point is expressed in the same unit-radius coordinate space as
+ * the commander's visual kit and sits exactly on the backpack roof. */
+export const COMMANDER_RADAR_MOUNT_RADIUS_UNITS = Object.freeze({
+  x: COMMANDER_BACKPACK_RADIUS_UNITS.x,
+  y: COMMANDER_BACKPACK_RADIUS_UNITS.y + COMMANDER_BACKPACK_RADIUS_UNITS.halfHeight,
+  z: COMMANDER_BACKPACK_RADIUS_UNITS.z,
+});
+
 export class CommanderVisualKit3D {
   private readonly boxGeom = CommanderVisualKit3D.namedBoxGeom();
 
@@ -109,7 +127,15 @@ export class CommanderVisualKit3D {
     // The old x=-0.57 center put its rear face exactly on the ribs' rear
     // faces, so two independently textured surfaces competed for one depth
     // plane. The ribs now stand physically proud of one continuous shell.
-    addBox(this.darkArmorMat, -0.555, 2.29, 0, 0.12, 0.54, 0.62);
+    addBox(
+      this.darkArmorMat,
+      COMMANDER_BACKPACK_RADIUS_UNITS.x,
+      COMMANDER_BACKPACK_RADIUS_UNITS.y,
+      COMMANDER_BACKPACK_RADIUS_UNITS.z,
+      COMMANDER_BACKPACK_RADIUS_UNITS.halfWidth,
+      COMMANDER_BACKPACK_RADIUS_UNITS.halfHeight,
+      COMMANDER_BACKPACK_RADIUS_UNITS.halfDepth,
+    );
     if (mediumDetail) {
       addBox(primaryMat, -0.61, 2.5, -0.29, 0.13, 0.22, 0.12);
       addBox(primaryMat, -0.61, 2.5, 0.29, 0.13, 0.22, 0.12);

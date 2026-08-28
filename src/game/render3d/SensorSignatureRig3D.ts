@@ -9,6 +9,7 @@ import {
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
 import { configureSelfLitEffectMaterial } from './RenderLighting3D';
+import { COMMANDER_RADAR_MOUNT_RADIUS_UNITS } from './CommanderVisualKit3D';
 
 export type SensorSignatureChannel = 'radar' | 'sonar' | 'jamming';
 
@@ -23,11 +24,15 @@ export type SensorSignatureRig3D = {
 
 type SensorSignatureBuildOptions = {
   hostRadius: number;
-  mountY: number;
+  /** Omit for the host-specific unit mount. Buildings provide their authored
+   * local mount because their meshes do not use the common unit silhouette. */
+  mount?: Readonly<{ x: number; y: number; z: number }>;
   /** Dedicated Radar/Sonar/Jammer buildings already carry large bespoke
    * hardware. They still receive the common pulse, but not a duplicate dish. */
   includeHardware?: boolean;
 };
+
+export type SensorSignatureMount3D = Readonly<{ x: number; y: number; z: number }>;
 
 const PULSE_COUNT = 3;
 const PULSE_CYCLES_PER_SECOND = 0.62;
@@ -44,6 +49,23 @@ let hardwareLightMaterial: THREE.MeshStandardMaterial | null = null;
 let radarPulseMaterial: THREE.MeshBasicMaterial | null = null;
 let sonarPulseMaterial: THREE.MeshBasicMaterial | null = null;
 let jammerPulseMaterial: THREE.MeshBasicMaterial | null = null;
+
+/** Resolve sensor hardware against the actual host silhouette. The generic
+ * unit mount remains the old centered position; only the Commander follows
+ * BAR's upper-rear torso dish placement. */
+export function resolveUnitSensorSignatureMount3D(
+  entity: Entity,
+  hostRadius: number,
+): SensorSignatureMount3D {
+  if (entity.commander !== null) {
+    return {
+      x: COMMANDER_RADAR_MOUNT_RADIUS_UNITS.x * hostRadius,
+      y: COMMANDER_RADAR_MOUNT_RADIUS_UNITS.y * hostRadius,
+      z: COMMANDER_RADAR_MOUNT_RADIUS_UNITS.z * hostRadius,
+    };
+  }
+  return { x: 0, y: hostRadius * 0.82, z: 0 };
+}
 
 export function setSensorSignatureTimeMs(timeMs: number): void {
   if (Number.isFinite(timeMs)) signatureTimeSec = Math.max(0, timeMs) / 1000;
@@ -273,7 +295,8 @@ export function buildSensorSignatureRig3D(
 
   const root = new THREE.Group();
   root.name = 'sensorSignatureRig';
-  root.position.y = options.mountY;
+  const mount = options.mount ?? resolveUnitSensorSignatureMount3D(entity, options.hostRadius);
+  root.position.set(mount.x, mount.y, mount.z);
   root.userData.sensorSignatureChannels = [
     ...(hasRadar ? ['radar'] as const : []),
     ...(hasSonar ? ['sonar'] as const : []),

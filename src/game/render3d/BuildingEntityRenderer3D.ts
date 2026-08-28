@@ -357,9 +357,13 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const localWaterlineY = WATER_LEVEL - buildingBaseZ;
   const sensorSignatureRig = buildSensorSignatureRig3D(entity, {
     hostRadius: sensorRadiiHostRadius,
-    mountY: entity.transform.z < WATER_LEVEL
-      ? Math.min(shape.height * 0.42, localWaterlineY - Math.max(4, sensorRadiiHostRadius * 0.08))
-      : shape.height * 0.88,
+    mount: {
+      x: 0,
+      y: entity.transform.z < WATER_LEVEL
+        ? Math.min(shape.height * 0.42, localWaterlineY - Math.max(4, sensorRadiiHostRadius * 0.08))
+        : shape.height * 0.88,
+      z: 0,
+    },
     includeHardware: !(
       entity.buildingBlueprintId === 'buildingRadar' ||
       entity.buildingBlueprintId === 'buildingSonar' ||
