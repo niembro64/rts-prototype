@@ -724,6 +724,7 @@ export class RtsScene3DRenderPhase {
       effectDtMs / 1000,
       graphicsConfig,
       renderFrameState,
+      serverMeta?.wind,
     );
     // P1-30: both CPU particle pools honor the effect-frame stride like the
     // neighboring burn/print/spray/smoke effects — they accumulate dt on

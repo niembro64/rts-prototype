@@ -5,7 +5,6 @@
   },
 
   "appearance": {
-    "color": [0.78, 0.9, 1.0],
     "maxAlpha": 0.85,
     "fadeInFraction": 0.15
   },

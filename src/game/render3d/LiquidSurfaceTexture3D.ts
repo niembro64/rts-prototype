@@ -1,7 +1,7 @@
 // Small deterministic, seamless textures for the horizontal liquid surfaces.
 // Water gets quiet bent flow lines. Lava gets two scales of cellular plates:
-// its shader counter-flows those fields so hot fissures open and close without
-// making the whole molten surface slide like a decal.
+// the renderer samples each field at three wind-advected scales so hot
+// fissures open and close without making the whole surface one sliding decal.
 
 import * as THREE from 'three';
 

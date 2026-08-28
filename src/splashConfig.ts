@@ -1,11 +1,9 @@
 import rawSplashConfig from './splashConfig.json';
+import { COLORS } from './colorsConfig';
 
-// Authored values live in splashConfig.json. This shim does two
-// things and only two things:
-//   1. Convert degrees-on-disk to radians-in-code so the JSON stays
-//      human-tunable while the renderer still does pure radian math.
-//   2. Freeze the resolved table so renderer code never accidentally
-//      mutates a config value at runtime.
+// Physical/shape values live in splashConfig.json; shared visual colours live
+// in colorsConfig.json. This shim converts authored degrees to radians and
+// freezes one resolved table so renderer code cannot mutate either source.
 //
 // New tuning knobs should be authored in the JSON first; this file
 // only mirrors the schema and applies the deg→rad conversions.
@@ -49,9 +47,12 @@ type SplashConfig = {
     maxDropletsPerSpawn: number;
   };
   appearance: {
-    colorR: number;
-    colorG: number;
-    colorB: number;
+    waterBirthColorHex: number;
+    waterDeathColorHex: number;
+    waterRingColorHex: number;
+    lavaBirthColorHex: number;
+    lavaDeathColorHex: number;
+    lavaRingColorHex: number;
     maxAlpha: number;
     fadeInFraction: number;
   };
@@ -96,16 +97,18 @@ type SplashConfig = {
 
 function buildConfig(): SplashConfig {
   const raw = rawSplashConfig as unknown as Record<string, any>;
-  const color = raw.appearance.color as number[];
   return Object.freeze<SplashConfig>({
     pool: Object.freeze({
       maxDroplets: raw.pool.maxDroplets,
       maxDropletsPerSpawn: raw.pool.maxDropletsPerSpawn,
     }),
     appearance: Object.freeze({
-      colorR: color[0],
-      colorG: color[1],
-      colorB: color[2],
+      waterBirthColorHex: COLORS.effects.liquidSplash.water.birthColorHex,
+      waterDeathColorHex: COLORS.effects.liquidSplash.water.deathColorHex,
+      waterRingColorHex: COLORS.effects.liquidSplash.water.ringColorHex,
+      lavaBirthColorHex: COLORS.effects.liquidSplash.lava.birthColorHex,
+      lavaDeathColorHex: COLORS.effects.liquidSplash.lava.deathColorHex,
+      lavaRingColorHex: COLORS.effects.liquidSplash.lava.ringColorHex,
       maxAlpha: raw.appearance.maxAlpha,
       fadeInFraction: raw.appearance.fadeInFraction,
     }),
@@ -183,3 +186,11 @@ function buildConfig(): SplashConfig {
 }
 
 export const SPLASH_CONFIG: SplashConfig = buildConfig();
+
+export type SplashLiquidMode = 'water' | 'lava';
+
+export function liquidSplashRingColor(mode: SplashLiquidMode): number {
+  return mode === 'lava'
+    ? SPLASH_CONFIG.appearance.lavaRingColorHex
+    : SPLASH_CONFIG.appearance.waterRingColorHex;
+}

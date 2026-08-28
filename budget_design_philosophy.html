@@ -2169,14 +2169,18 @@
       </p>
       <p>
         <code>LIQUID</code> has three explicit states: <code>WATER</code>, <code>LAVA</code>, and
-        <code>NONE</code>. WATER&rsquo;s horizontal surface carries one small, seamless,
-        world-anchored, low-contrast flow texture that modulates colour only: authored alpha remains
-        the sole transparency control, so texture can never obscure the seabed or submerged units.
-        LAVA layers two scales of seamless cellular crust in a counter-flowing shader, keeping broad
-        plates dark while orange fissures shift and pulse; it is not one translated lava decal.
-        Render-only perimeter curtains stay untextured. NONE emits no liquid surface or curtains and
-        leaves no pickable plane; the authored basin terrain remains and becomes dry ground throughout
-        simulation and rendering.
+        <code>NONE</code>. WATER&rsquo;s horizontal surface layers three seamless, world-anchored,
+        low-contrast flow readings that modulate colour only: authored alpha remains the sole
+        transparency control, so texture can never obscure the seabed or submerged units. LAVA
+        samples the same three-layer movement profile from seamless cellular crust, keeping broad
+        plates dark while orange fissures shift and pulse; neither medium is one translated decal.
+        Each layer integrates the live horizontal wind direction at its own speed and wiggles around
+        that bearing on a distinct prime-number period, so the whole surface travels downwind without
+        forming one mechanically clean conveyor. Projectile splashes inherit the active medium:
+        water droplets cool through blue and lava droplets cool from white-hot yellow to orange-red,
+        including the surface impact ring. Render-only perimeter curtains stay untextured. NONE emits
+        no liquid surface, curtains, or splashes and leaves no pickable plane; the authored basin
+        terrain remains and becomes dry ground throughout simulation and rendering.
       </p>
       <p>
         <strong>GPU boundary precision:</strong> the Windows/NVIDIA world-box shimmer was not a

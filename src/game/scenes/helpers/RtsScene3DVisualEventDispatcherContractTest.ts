@@ -43,6 +43,8 @@ import type { ViewportFootprint } from '../../ViewportFootprint';
 import { dispatchSimEvent3DVisual } from './RtsScene3DVisualEventDispatcher';
 import { presentSnapshotEventsImmediatelyAndScheduleAudio } from './RtsScene3DSnapshotIntake';
 import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
+import { liquidSplashRingColor, type SplashLiquidMode } from '@/splashConfig';
+import { getLiquidSurfaceMode, setLiquidSurfaceMode } from '../../sim/worldSurfaceState';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[damage impact routing contract] ${message}`);
@@ -162,6 +164,17 @@ function event(
     killerPlayerId: null,
     victimPlayerId: null,
     audioOnly: false,
+  };
+}
+
+function liquidSplashEvent(entityId: number): NetworkServerSnapshotSimEvent {
+  return {
+    ...event('hit', entityId),
+    type: 'waterSplash',
+    waterSplash: {
+      velocity: { x: 18, y: -7, z: -90 },
+      mass: 4,
+    },
   };
 }
 
@@ -331,6 +344,8 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
   const impacts: DamageImpactRequest[] = [];
   const killed: Array<{ id: number; blast: unknown }> = [];
   const plasmaCollapses: Array<{ id: number; x: number; y: number; z: number }> = [];
+  const liquidSplashes: SplashLiquidMode[] = [];
+  const liquidImpactColors: Array<number | undefined> = [];
   const context = {
     clientViewState: {
       getEntity: () => undefined,
@@ -345,13 +360,46 @@ export function runRtsScene3DVisualEventDispatcherContractTest(): void {
     beamRenderer: {
       spawnDamageImpact: (request: DamageImpactRequest) => { impacts.push(request); },
     } as unknown as BeamRenderer3D,
-    shieldImpactRenderer: {} as ShieldImpactRenderer3D,
-    waterSplashRenderer: {} as WaterSplash3D,
+    shieldImpactRenderer: {
+      spawn: (
+        _x: number,
+        _y: number,
+        _z: number,
+        _normal: unknown,
+        _playerId: unknown,
+        colorOverride?: number,
+      ) => { liquidImpactColors.push(colorOverride); },
+    } as unknown as ShieldImpactRenderer3D,
+    waterSplashRenderer: {
+      createSplash: (
+        _position: unknown,
+        _velocity: unknown,
+        _mass: number,
+        mode: SplashLiquidMode,
+      ) => { liquidSplashes.push(mode); },
+    } as unknown as WaterSplash3D,
     isPositionMinimumLod: () => false,
     positionVisualDetailLevel: () => DETAIL_LEVEL_FULL,
   };
 
   const previousMaterialExplosions = getMaterialExplosions();
+  const previousLiquidSurfaceMode = getLiquidSurfaceMode();
+  setLiquidSurfaceMode('water');
+  dispatchSimEvent3DVisual(liquidSplashEvent(61), context);
+  setLiquidSurfaceMode('lava');
+  dispatchSimEvent3DVisual(liquidSplashEvent(62), context);
+  setLiquidSurfaceMode('none');
+  dispatchSimEvent3DVisual(liquidSplashEvent(63), context);
+  assertContract(
+    liquidSplashes.join(',') === 'water,lava',
+    'liquid impacts must route WATER and LAVA into their own splash palettes and emit nothing for NONE',
+  );
+  assertContract(
+    liquidImpactColors[0] === liquidSplashRingColor('water')
+      && liquidImpactColors[1] === liquidSplashRingColor('lava'),
+    'liquid impact rings must use medium colours instead of shield/team white',
+  );
+  setLiquidSurfaceMode(previousLiquidSurfaceMode);
   setMaterialExplosions(true);
   dispatchSimEvent3DVisual(event('hit', 71), context);
   assertContract(impacts.length === 1, 'a shot hit must enter the shared damage-impact pipeline');

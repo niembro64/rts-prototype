@@ -29,8 +29,11 @@
         "resolution": 256,
         "tileWorldSize": 760,
         "contrast": 0.08,
-        "scrollWorldUnitsPerSecondX": 6,
-        "scrollWorldUnitsPerSecondZ": 3
+        "flowWorldUnitsPerSecond": 7,
+        "directionWiggleDegrees": 16,
+        "layerScales": [1, 1.61, 0.73],
+        "layerSpeedMultipliers": [1, 0.79, 1.23],
+        "wigglePeriodsSeconds": [17, 23, 31]
       },
       "lava": {
         "colorHex": "#ff6412",
@@ -40,8 +43,11 @@
           "resolution": 256,
           "tileWorldSize": 720,
           "contrast": 0.78,
-          "scrollWorldUnitsPerSecondX": 4,
-          "scrollWorldUnitsPerSecondZ": 2
+          "flowWorldUnitsPerSecond": 4.5,
+          "directionWiggleDegrees": 12,
+          "layerScales": [1, 1.83, 0.53],
+          "layerSpeedMultipliers": [1, 0.71, 1.29],
+          "wigglePeriodsSeconds": [19, 29, 37]
         }
       }
     },
@@ -803,6 +809,18 @@
     }
   },
   "effects": {
+    "liquidSplash": {
+      "water": {
+        "birthColorHex": "#dcf5ff",
+        "deathColorHex": "#69b9ed",
+        "ringColorHex": "#9bdcff"
+      },
+      "lava": {
+        "birthColorHex": "#fff0a0",
+        "deathColorHex": "#e43b08",
+        "ringColorHex": "#ff6814"
+      }
+    },
     "contactBlip": {
       "radarColorHex": "#ff7a70",
       "sonarColorHex": "#62d9ff",

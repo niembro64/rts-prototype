@@ -18,9 +18,12 @@
 
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
-import { SPLASH_CONFIG } from '@/splashConfig';
+import { SPLASH_CONFIG, type SplashLiquidMode } from '@/splashConfig';
 import type { Vec3 } from '@/types/vec2';
-import { INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER } from './instancedColorAlphaParticleShader';
+import {
+  INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
+  INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+} from './instancedColorAlphaParticleShader';
 import { PRIMITIVE_GEOMETRY_TIERS } from './instancedParticlePool3D';
 import {
   createPrimitiveSphereGeometry,
@@ -32,14 +35,12 @@ import type { RenderViewState3D } from './RenderFrameState3D';
 import { detailLevelForViewPosition, geometryTierForDetail } from './EntityDetailLevel3D';
 import { applyExposureToRawShader } from './RenderLighting3D';
 import { finiteOr, finiteOrZero } from '../math';
+import { hexToRgb01 } from './colorUtils';
 
-const FS = `
-uniform vec3 uColor;
-varying float vAlpha;
-void main() {
-  gl_FragColor = vec4(uColor, vAlpha);
-}
-`;
+const WATER_BIRTH_COLOR = hexToRgb01(SPLASH_CONFIG.appearance.waterBirthColorHex);
+const WATER_DEATH_COLOR = hexToRgb01(SPLASH_CONFIG.appearance.waterDeathColorHex);
+const LAVA_BIRTH_COLOR = hexToRgb01(SPLASH_CONFIG.appearance.lavaBirthColorHex);
+const LAVA_DEATH_COLOR = hexToRgb01(SPLASH_CONFIG.appearance.lavaDeathColorHex);
 
 type Droplet = {
   active: boolean;
@@ -50,6 +51,7 @@ type Droplet = {
   lifetimeMs: number;
   width: number;
   lengthScale: number;
+  liquidMode: SplashLiquidMode;
 };
 
 type DropletPool = {
@@ -57,6 +59,8 @@ type DropletPool = {
   mesh: THREE.InstancedMesh;
   alphaArr: Float32Array;
   alphaAttr: THREE.InstancedBufferAttribute;
+  colorArr: Float32Array;
+  colorAttr: THREE.InstancedBufferAttribute;
 };
 
 export class WaterSplash3D {
@@ -77,17 +81,8 @@ export class WaterSplash3D {
     parentWorld.add(this.root);
 
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: INSTANCED_ALPHA_PARTICLE_VERTEX_SHADER,
-      fragmentShader: FS,
-      uniforms: {
-        uColor: {
-          value: new THREE.Color(
-            cfg.appearance.colorR,
-            cfg.appearance.colorG,
-            cfg.appearance.colorB,
-          ),
-        },
-      },
+      vertexShader: INSTANCED_COLOR_ALPHA_PARTICLE_VERTEX_SHADER,
+      fragmentShader: INSTANCED_COLOR_ALPHA_PARTICLE_FRAGMENT_SHADER,
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -109,6 +104,7 @@ export class WaterSplash3D {
         vx: 0, vy: 0, vz: 0,
         ageMs: 0, lifetimeMs: 0,
         width: 0, lengthScale: 0,
+        liquidMode: 'water',
       });
       this.freeSlots.push(i);
     }
@@ -122,17 +118,26 @@ export class WaterSplash3D {
     const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
     alphaAttr.setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('aAlpha', alphaAttr);
+    const colorArr = new Float32Array(capacity * 3);
+    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aColor', colorAttr);
     const mesh = new THREE.InstancedMesh(geom, this.mat, capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     mesh.frustumCulled = false;
     mesh.renderOrder = 14;
     this.root.add(mesh);
-    return { geom, mesh, alphaArr, alphaAttr };
+    return { geom, mesh, alphaArr, alphaAttr, colorArr, colorAttr };
   }
 
-  /** Create a water splash from physical impact inputs in sim coords. */
-  createSplash(position: Readonly<Vec3>, velocity: Readonly<Vec3>, massInput: number): void {
+  /** Create a liquid-coloured splash from physical impact inputs in sim coords. */
+  createSplash(
+    position: Readonly<Vec3>,
+    velocity: Readonly<Vec3>,
+    massInput: number,
+    liquidMode: SplashLiquidMode = 'water',
+  ): void {
     const cfg = SPLASH_CONFIG;
     const incomingVelX = finiteOrZero(velocity.x);
     const incomingVelY = finiteOrZero(velocity.y);
@@ -192,6 +197,7 @@ export class WaterSplash3D {
         widthBase * (jet.widthMultMin + Math.random() * jet.widthMultRange),
         jet.lifetimeMinMs + Math.random() * jet.lifetimeRangeMs,
         jet.lengthScale,
+        liquidMode,
       )) return;
     }
 
@@ -209,6 +215,7 @@ export class WaterSplash3D {
         widthBase * (crown.widthMultMin + Math.random() * crown.widthMultRange),
         crown.lifetimeMinMs + Math.random() * crown.lifetimeRangeMs,
         crown.lengthScale,
+        liquidMode,
       )) return;
     }
 
@@ -226,6 +233,7 @@ export class WaterSplash3D {
         widthBase * (spray.widthMultMin + Math.random() * spray.widthMultRange),
         spray.lifetimeMinMs + Math.random() * spray.lifetimeRangeMs,
         spray.lengthScale,
+        liquidMode,
       )) return;
     }
   }
@@ -239,6 +247,7 @@ export class WaterSplash3D {
     width: number,
     lifetimeMs: number,
     lengthScale: number,
+    liquidMode: SplashLiquidMode,
   ): boolean {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return false;
@@ -259,6 +268,7 @@ export class WaterSplash3D {
     d.lifetimeMs = lifetimeMs;
     d.width = width;
     d.lengthScale = lengthScale;
+    d.liquidMode = liquidMode;
     this.activeDropletCount++;
     return true;
   }
@@ -361,6 +371,12 @@ export class WaterSplash3D {
       const writeIndex = counts[tier]++;
       pool.mesh.setMatrixAt(writeIndex, this.scratch);
       pool.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * maxAlpha;
+      const birthColor = d.liquidMode === 'lava' ? LAVA_BIRTH_COLOR : WATER_BIRTH_COLOR;
+      const deathColor = d.liquidMode === 'lava' ? LAVA_DEATH_COLOR : WATER_DEATH_COLOR;
+      const colorOffset = writeIndex * 3;
+      pool.colorArr[colorOffset] = birthColor.r + (deathColor.r - birthColor.r) * t;
+      pool.colorArr[colorOffset + 1] = birthColor.g + (deathColor.g - birthColor.g) * t;
+      pool.colorArr[colorOffset + 2] = birthColor.b + (deathColor.b - birthColor.b) * t;
     }
     for (let t = 0; t < PRIMITIVE_GEOMETRY_TIERS.length; t++) {
       const tier = PRIMITIVE_GEOMETRY_TIERS[t];
@@ -369,6 +385,7 @@ export class WaterSplash3D {
       if (counts[tier] > 0) {
         pool.mesh.instanceMatrix.needsUpdate = true;
         pool.alphaAttr.needsUpdate = true;
+        pool.colorAttr.needsUpdate = true;
       }
     }
   }
