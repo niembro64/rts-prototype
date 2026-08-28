@@ -1,4 +1,5 @@
 import { getMaterialExplosions } from '@/clientBarConfig';
+import { liquidSplashRingColor } from '@/splashConfig';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
@@ -9,6 +10,7 @@ import { entityDeathBlastFromContext3D } from '../../render3d/EntityDeathDisasse
 import { finiteOr } from '../../math';
 import { DEATH_EXPLOSION_HITBOX_RADIUS_MULT } from '../../sim/blueprints/entityBaseLedger';
 import { getShotBlueprint } from '../../sim/blueprints/shots';
+import { getLiquidSurfaceMode } from '../../sim/worldSurfaceState';
 import { isShotBlueprintId } from '@/types/blueprintIds';
 import {
   WATER_SURFACE_NORMAL_SIM,
@@ -123,6 +125,11 @@ export function dispatchSimEvent3DVisual(
       seedSource: event.entityId ?? undefined,
     });
   } else if (event.type === 'waterSplash') {
+    const liquidMode = getLiquidSurfaceMode();
+    // A stale crossing event can arrive in the same snapshot that drains the
+    // world. NONE has no medium to rebound from, so it must not leave a
+    // presentation-only splash behind.
+    if (liquidMode === 'none') return;
     const splash = event.waterSplash;
     const ctx = event.impactContext;
     if (context.isPositionMinimumLod(
@@ -144,13 +151,15 @@ export function dispatchSimEvent3DVisual(
       event.pos,
       splash ? splash.velocity : fallbackVelocity,
       mass,
+      liquidMode,
     );
     context.shieldImpactRenderer.spawn(
       event.pos.x,
       event.pos.y,
       event.pos.z,
       WATER_SURFACE_NORMAL_SIM,
-      event.playerId ?? undefined,
+      undefined,
+      liquidSplashRingColor(liquidMode),
     );
   } else if (event.type === 'projectileExpire') {
     if (event.entityId !== null) {

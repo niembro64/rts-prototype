@@ -16,6 +16,9 @@ import { WATER_LEVEL } from '../sim/Terrain';
 import { WATER_BOX_FACES, WaterRenderer3D } from './WaterRenderer3D';
 import { LAVA_RENDER_CONFIG, WATER_RENDER_CONFIG } from '@/config';
 import { createLiquidSurfaceTexture3D } from './LiquidSurfaceTexture3D';
+import { WaterSplash3D } from './WaterSplash3D';
+import { hexToRgb01 } from './colorUtils';
+import { SPLASH_CONFIG, type SplashLiquidMode } from '@/splashConfig';
 import {
   getLiquidSurfaceMode,
   setLiquidSurfaceMode,
@@ -23,6 +26,37 @@ import {
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`[water renderer contract] ${message}`);
+}
+
+function isPrimeInteger(value: number): boolean {
+  if (!Number.isInteger(value) || value < 2) return false;
+  for (let divisor = 2; divisor * divisor <= value; divisor++) {
+    if (value % divisor === 0) return false;
+  }
+  return true;
+}
+
+function splashBirthColor(mode: SplashLiquidMode): THREE.Vector3 {
+  const parent = new THREE.Group();
+  const splash = new WaterSplash3D(parent);
+  try {
+    splash.createSplash(
+      { x: 20, y: 30, z: WATER_LEVEL },
+      { x: 12, y: 4, z: -80 },
+      4,
+      mode,
+    );
+    splash.update(0);
+    const root = parent.children.find((child): child is THREE.Group => child instanceof THREE.Group);
+    const activePool = root?.children.find(
+      (child): child is THREE.InstancedMesh => child instanceof THREE.InstancedMesh && child.count > 0,
+    );
+    const colors = activePool?.geometry.getAttribute('aColor');
+    assertContract(colors !== undefined && colors.count > 0, `${mode} splash must upload droplet colours`);
+    return new THREE.Vector3(colors.getX(0), colors.getY(0), colors.getZ(0));
+  } finally {
+    splash.destroy();
+  }
 }
 
 function assertLiquidSceneCompiles(
@@ -117,15 +151,66 @@ export function runWaterRenderer3DContractTest(): void {
       surfaceUvs !== undefined && surfaceUvs.count === surfacePositions.count,
       'every liquid-surface vertex must carry world-anchored texture coordinates',
     );
-    const initialTextureOffset = surfaceMaterial.map.offset.clone();
-    renderer.update(1, getGraphicsConfig());
+    const waterShader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      fragmentShader: '#include <map_pars_fragment>\n#include <map_fragment>',
+    };
+    (surfaceMaterial.onBeforeCompile as (shader: typeof waterShader) => void)(waterShader);
+    const waterFlow = [
+      waterShader.uniforms.uLiquidFlow0?.value,
+      waterShader.uniforms.uLiquidFlow1?.value,
+      waterShader.uniforms.uLiquidFlow2?.value,
+    ] as THREE.Vector2[];
     assertContract(
-      !surfaceMaterial.map.offset.equals(initialTextureOffset),
-      'liquid texture must drift slowly while its geometry remains fixed',
+      waterFlow.every((offset) => offset instanceof THREE.Vector2)
+        && waterShader.fragmentShader.includes('waterSecondary')
+        && waterShader.fragmentShader.includes('waterTertiary')
+        && !waterShader.fragmentShader.includes('#include <map_fragment>'),
+      'water must blend three independently advected seamless flow layers',
     );
+    renderer.update(1, getGraphicsConfig(), undefined, { x: 12, y: 0 });
+    assertContract(
+      waterFlow.every((offset) => offset.x > 0 && Math.abs(offset.y) < offset.x * 0.35),
+      'every water layer must travel generally along the live +X wind',
+    );
+    assertContract(
+      new Set(
+        waterFlow.map((offset) => Math.atan2(offset.y, offset.x).toFixed(6)),
+      ).size === 3,
+      'the three water layers must wiggle on distinct headings rather than one clean conveyor',
+    );
+    assertLiquidSceneCompiles(parent, mapWidth, mapHeight);
 
     const waterTexture = createLiquidSurfaceTexture3D('water', WATER_RENDER_CONFIG.texture);
     const lavaTexture = createLiquidSurfaceTexture3D('lava', LAVA_RENDER_CONFIG.texture);
+    assertContract(
+      [...WATER_RENDER_CONFIG.texture.wigglePeriodsSeconds,
+        ...LAVA_RENDER_CONFIG.texture.wigglePeriodsSeconds].every(isPrimeInteger),
+      'all three liquid-layer wiggles in both media must use prime-number periods',
+    );
+    const waterSplashColor = splashBirthColor('water');
+    const lavaSplashColor = splashBirthColor('lava');
+    const expectedWaterSplash = hexToRgb01(SPLASH_CONFIG.appearance.waterBirthColorHex);
+    const expectedLavaSplash = hexToRgb01(SPLASH_CONFIG.appearance.lavaBirthColorHex);
+    assertContract(
+      waterSplashColor.distanceTo(new THREE.Vector3(
+        expectedWaterSplash.r,
+        expectedWaterSplash.g,
+        expectedWaterSplash.b,
+      )) < 1e-6
+        && waterSplashColor.z > waterSplashColor.x,
+      'water impacts must emit the authored cool blue droplet ramp',
+    );
+    assertContract(
+      lavaSplashColor.distanceTo(new THREE.Vector3(
+        expectedLavaSplash.r,
+        expectedLavaSplash.g,
+        expectedLavaSplash.b,
+      )) < 1e-6
+        && lavaSplashColor.x >= lavaSplashColor.y
+        && lavaSplashColor.y > lavaSplashColor.z,
+      'lava impacts must emit the authored white-hot-to-orange droplet ramp',
+    );
     const channelRange = (texture: THREE.DataTexture): number => {
       const data = texture.image.data as Uint8Array;
       let low = 255;
@@ -300,7 +385,7 @@ export function runWaterRenderer3DContractTest(): void {
       lavaTextureName === 'LiquidSurfaceTexture:lava'
         && !surfaceMaterial.transparent
         && surfaceMaterial.opacity === 1
-        && surfaceMaterial.userData.liquidSurfaceShader === 'lava-flow-v2',
+        && surfaceMaterial.userData.liquidSurfaceShader === 'lava-wind-flow-v1',
       'lava must replace the water skin with an opaque animated crust material',
     );
     const lavaShader = {
@@ -308,18 +393,29 @@ export function runWaterRenderer3DContractTest(): void {
       fragmentShader: '#include <map_pars_fragment>\n#include <map_fragment>',
     };
     (surfaceMaterial.onBeforeCompile as (shader: typeof lavaShader) => void)(lavaShader);
-    const lavaTime = lavaShader.uniforms.uLavaTime;
+    const lavaTime = lavaShader.uniforms.uLiquidTime;
+    const lavaFlow = [
+      lavaShader.uniforms.uLiquidFlow0?.value,
+      lavaShader.uniforms.uLiquidFlow1?.value,
+      lavaShader.uniforms.uLiquidFlow2?.value,
+    ] as THREE.Vector2[];
     assertContract(
       lavaTime !== undefined
+        && lavaFlow.every((offset) => offset instanceof THREE.Vector2)
         && lavaShader.fragmentShader.includes('lavaSecondary')
+        && lavaShader.fragmentShader.includes('lavaTertiary')
         && !lavaShader.fragmentShader.includes('#include <map_fragment>'),
-      'lava shader must layer counter-moving crust fields instead of sliding one decal',
+      'lava shader must layer three independently advected crust fields instead of sliding one decal',
     );
     const initialLavaTime = lavaTime.value as number;
-    renderer.update(1, getGraphicsConfig());
+    renderer.update(1, getGraphicsConfig(), undefined, { x: 0, y: 8 });
     assertContract(
       (lavaTime.value as number) > initialLavaTime,
       'lava flow time must advance with rendered time',
+    );
+    assertContract(
+      lavaFlow.every((offset) => offset.y > 0 && Math.abs(offset.x) < offset.y * 0.27),
+      'every lava layer must travel generally along the live +Y wind',
     );
     assertLiquidSceneCompiles(parent, mapWidth, mapHeight);
 

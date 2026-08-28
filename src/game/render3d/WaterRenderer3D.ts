@@ -71,22 +71,55 @@ function lavaSurfaceColor(): THREE.Color {
 const WATER_TRIANGLE_DEBUG_COLOR = 0xfff17a;
 const WATER_TRIANGLE_DEBUG_OPACITY = 0.95;
 
-/** Lava is not a translated decal. Two scales of the seamless crust field
- * counter-flow through one another, warping and exposing hot fissures while
- * the larger plates remain dark. MeshBasicMaterial still supplies the scene's
- * ordinary fog/tone-mapping path; this only replaces its stock map multiply. */
+/** Three independent field offsets are integrated on the CPU from the live
+ * horizontal wind. The fragment shader samples the same seamless authored
+ * field at three scales; subtracting each accumulated offset makes features
+ * travel downstream rather than sliding opposite the wind like a UV decal. */
+const LIQUID_MAP_UNIFORMS = `
+uniform float uLiquidTime;
+uniform vec2 uLiquidFlow0;
+uniform vec2 uLiquidFlow1;
+uniform vec2 uLiquidFlow2;
+uniform vec3 uLiquidLayerScales;
+`;
+
+const WATER_MAP_FRAGMENT = `
+#ifdef USE_MAP
+  vec3 waterPrimary = texture2D(
+    map,
+    vMapUv * uLiquidLayerScales.x - uLiquidFlow0
+  ).rgb;
+  vec3 waterSecondary = texture2D(
+    map,
+    vMapUv * uLiquidLayerScales.y - uLiquidFlow1
+  ).rgb;
+  vec3 waterTertiary = texture2D(
+    map,
+    vMapUv * uLiquidLayerScales.z - uLiquidFlow2
+  ).rgb;
+  diffuseColor.rgb *=
+    waterPrimary * 0.52 + waterSecondary * 0.30 + waterTertiary * 0.18;
+#endif
+`;
+
+/** Lava is not a translated decal. Three wind-advected scales of the seamless
+ * crust field warp and expose hot fissures while the larger plates remain
+ * dark. MeshBasicMaterial still supplies the scene's ordinary
+ * fog/tone-mapping path; this only replaces its stock map multiply. */
 const LAVA_MAP_FRAGMENT = `
 #ifdef USE_MAP
-  vec2 lavaFlow = uLavaFlowUvPerSecond * uLavaTime;
-  vec3 lavaPrimary = texture2D(map, vMapUv + lavaFlow).rgb;
+  vec3 lavaPrimary = texture2D(
+    map,
+    vMapUv * uLiquidLayerScales.x - uLiquidFlow0
+  ).rgb;
   vec2 lavaWarp = (lavaPrimary.gb - vec2(0.5)) * 0.075;
   vec3 lavaSecondary = texture2D(
     map,
-    vMapUv * 1.83 - lavaFlow * 0.71 + lavaWarp
+    vMapUv * uLiquidLayerScales.y - uLiquidFlow1 + lavaWarp
   ).rgb;
   vec3 lavaTertiary = texture2D(
     map,
-    vMapUv * 0.53 + lavaFlow * vec2(-0.19, 0.31) - lavaWarp * 0.45
+    vMapUv * uLiquidLayerScales.z - uLiquidFlow2 - lavaWarp * 0.45
   ).rgb;
   float lavaFissure = max(
     lavaPrimary.r,
@@ -94,7 +127,7 @@ const LAVA_MAP_FRAGMENT = `
   );
   float lavaCore = max(lavaPrimary.g, lavaSecondary.g * 0.86);
   float lavaPulse = 0.88 + 0.12 * sin(
-    uLavaTime * 1.15 + lavaTertiary.b * 6.2831853
+    uLiquidTime * 1.15 + lavaTertiary.b * 6.2831853
   );
   vec3 lavaMultiplier = mix(
     vec3(0.055, 0.032, 0.022),
@@ -109,6 +142,21 @@ const LAVA_MAP_FRAGMENT = `
   diffuseColor.rgb *= lavaMultiplier;
 #endif
 `;
+
+const LIQUID_FLOW_LAYER_PHASE_RADIANS = [
+  0,
+  (Math.PI * 2) / 3,
+  (Math.PI * 4) / 3,
+] as const;
+
+type LiquidFlowWind = Readonly<{ x: number; y: number }>;
+
+function wrapRepeat(value: number): number {
+  // RepeatWrapping treats negative and positive integer offsets identically.
+  // Preserve the sign of the remainder so the stored displacement still
+  // communicates which side of the wind bearing a layer is wiggling toward.
+  return value % 1;
+}
 
 // The horizontal surface is a rectilinear grid, not one giant quad. Depth
 // at a pixel is interpolated from that triangle's own vertices, so a quad
@@ -306,9 +354,14 @@ export class WaterRenderer3D {
   private waterTriangleMaterial: THREE.LineBasicMaterial;
   private liquidTexture: THREE.DataTexture;
   private liquidTextureTileWorldSize: number;
-  private liquidTextureScrollUvPerSecond: THREE.Vector2;
-  private readonly lavaTimeUniform = { value: 0 };
-  private readonly lavaFlowUvPerSecondUniform = { value: new THREE.Vector2() };
+  private liquidFlowConfig: typeof WATER_RENDER_CONFIG.texture;
+  private readonly liquidTimeUniform = { value: 0 };
+  private readonly liquidFlowOffsetUniforms = [
+    { value: new THREE.Vector2() },
+    { value: new THREE.Vector2() },
+    { value: new THREE.Vector2() },
+  ] as const;
+  private readonly liquidLayerScalesUniform = { value: new THREE.Vector3() };
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -331,7 +384,7 @@ export class WaterRenderer3D {
     // beneath the ocean are culled in TerrainTileRenderer3D for that mode.
     // LIQUID = LAVA swaps the surface for opaque molten rock. Same base
     // material path (unlit, still tone mapped), with a small shader extension
-    // for counter-flowing crust. LIQUID = NONE keeps this stable mesh object
+    // for wind-advected crust. LIQUID = NONE keeps this stable mesh object
     // for callers but gives it no geometry at all.
     this.lastLiquidSurfaceMode = getLiquidSurfaceMode();
     const lava = this.lastLiquidSurfaceMode === 'lava';
@@ -343,11 +396,8 @@ export class WaterRenderer3D {
       textureConfig,
     );
     this.liquidTextureTileWorldSize = textureConfig.tileWorldSize;
-    this.liquidTextureScrollUvPerSecond = new THREE.Vector2(
-      textureConfig.scrollWorldUnitsPerSecondX / textureConfig.tileWorldSize,
-      textureConfig.scrollWorldUnitsPerSecondZ / textureConfig.tileWorldSize,
-    );
-    this.lavaFlowUvPerSecondUniform.value.copy(this.liquidTextureScrollUvPerSecond);
+    this.liquidFlowConfig = textureConfig;
+    this.liquidLayerScalesUniform.value.fromArray(textureConfig.layerScales);
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: lava ? lavaSurfaceColor() : WATER_RENDER_CONFIG.color,
       map: this.liquidTexture,
@@ -365,7 +415,7 @@ export class WaterRenderer3D {
     // above and below water without letting driver-specific depth rounding
     // differ between two passes over the same triangles.
     this.waterMaterial.forceSinglePass = true;
-    this.configureSurfaceShader(lava);
+    this.configureSurfaceShader(lava ? 'lava' : 'water');
     this.waterCurtainMaterial = this.waterMaterial.clone();
     // Flow grain belongs to the horizontal skin. Stretching it down the
     // render-only world-box curtains would turn every wave into a long stripe.
@@ -436,26 +486,25 @@ export class WaterRenderer3D {
     return this.waterMesh;
   }
 
-  private configureSurfaceShader(lava: boolean): void {
-    if (!lava) {
-      this.waterMaterial.onBeforeCompile = () => {};
-      this.waterMaterial.customProgramCacheKey = () => 'water-surface-v1';
-      this.waterMaterial.userData.liquidSurfaceShader = 'water';
-      this.waterMaterial.needsUpdate = true;
-      return;
-    }
+  private configureSurfaceShader(mode: Exclude<LiquidSurfaceMode, 'none'>): void {
     this.waterMaterial.onBeforeCompile = (shader): void => {
-      shader.uniforms.uLavaTime = this.lavaTimeUniform;
-      shader.uniforms.uLavaFlowUvPerSecond = this.lavaFlowUvPerSecondUniform;
+      shader.uniforms.uLiquidTime = this.liquidTimeUniform;
+      shader.uniforms.uLiquidFlow0 = this.liquidFlowOffsetUniforms[0];
+      shader.uniforms.uLiquidFlow1 = this.liquidFlowOffsetUniforms[1];
+      shader.uniforms.uLiquidFlow2 = this.liquidFlowOffsetUniforms[2];
+      shader.uniforms.uLiquidLayerScales = this.liquidLayerScalesUniform;
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <map_pars_fragment>',
-          '#include <map_pars_fragment>\nuniform float uLavaTime;\nuniform vec2 uLavaFlowUvPerSecond;',
+          `#include <map_pars_fragment>\n${LIQUID_MAP_UNIFORMS}`,
         )
-        .replace('#include <map_fragment>', LAVA_MAP_FRAGMENT);
+        .replace(
+          '#include <map_fragment>',
+          mode === 'lava' ? LAVA_MAP_FRAGMENT : WATER_MAP_FRAGMENT,
+        );
     };
-    this.waterMaterial.customProgramCacheKey = () => 'lava-surface-flow-v2';
-    this.waterMaterial.userData.liquidSurfaceShader = 'lava-flow-v2';
+    this.waterMaterial.customProgramCacheKey = () => `${mode}-wind-flow-v1`;
+    this.waterMaterial.userData.liquidSurfaceShader = `${mode}-wind-flow-v1`;
     this.waterMaterial.needsUpdate = true;
   }
 
@@ -467,12 +516,10 @@ export class WaterRenderer3D {
     const previousTexture = this.liquidTexture;
     this.liquidTexture = createLiquidSurfaceTexture3D(mode, textureConfig);
     this.liquidTextureTileWorldSize = textureConfig.tileWorldSize;
-    this.liquidTextureScrollUvPerSecond.set(
-      textureConfig.scrollWorldUnitsPerSecondX / textureConfig.tileWorldSize,
-      textureConfig.scrollWorldUnitsPerSecondZ / textureConfig.tileWorldSize,
-    );
-    this.lavaFlowUvPerSecondUniform.value.copy(this.liquidTextureScrollUvPerSecond);
-    this.lavaTimeUniform.value = 0;
+    this.liquidFlowConfig = textureConfig;
+    this.liquidLayerScalesUniform.value.fromArray(textureConfig.layerScales);
+    this.liquidTimeUniform.value = 0;
+    for (const offset of this.liquidFlowOffsetUniforms) offset.value.set(0, 0);
 
     this.waterMaterial.color.copy(
       lava ? lavaSurfaceColor() : new THREE.Color(WATER_RENDER_CONFIG.color),
@@ -482,7 +529,7 @@ export class WaterRenderer3D {
     this.waterMaterial.opacity = lava || WATER_FULLY_OPAQUE
       ? 1
       : WATER_RENDER_CONFIG.opacity;
-    this.configureSurfaceShader(lava);
+    this.configureSurfaceShader(mode);
 
     this.waterCurtainMaterial.color.copy(this.waterMaterial.color);
     this.waterCurtainMaterial.transparent = this.waterMaterial.transparent;
@@ -828,11 +875,51 @@ export class WaterRenderer3D {
     this.lastWaterBoundaryMode = mode;
   }
 
+  /** Integrate three continuous downstream offsets. Each layer oscillates a
+   * little around the current wind bearing on its own prime-number period,
+   * which keeps the surface coherent without forming one mechanically clean
+   * conveyor belt. Integrating displacement avoids UV jumps when wind turns. */
+  private advanceLiquidFlow(dtSec: number, wind: LiquidFlowWind | undefined): void {
+    if (!Number.isFinite(dtSec) || dtSec <= 0) return;
+    this.liquidTimeUniform.value = (this.liquidTimeUniform.value + dtSec) % 10_000;
+    const windX = Number.isFinite(wind?.x) ? wind!.x : 0;
+    const windZ = Number.isFinite(wind?.y) ? wind!.y : 0;
+    const horizontalSpeed = Math.hypot(windX, windZ);
+    if (horizontalSpeed <= 1e-6) return;
+
+    const directionX = windX / horizontalSpeed;
+    const directionZ = windZ / horizontalSpeed;
+    const config = this.liquidFlowConfig;
+    for (let layer = 0; layer < this.liquidFlowOffsetUniforms.length; layer++) {
+      const phase =
+        this.liquidTimeUniform.value * Math.PI * 2 / config.wigglePeriodsSeconds[layer]
+        + LIQUID_FLOW_LAYER_PHASE_RADIANS[layer];
+      const angle = Math.sin(phase) * config.directionWiggleRadians;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const layerDirectionX = directionX * cos - directionZ * sin;
+      const layerDirectionZ = directionX * sin + directionZ * cos;
+      // The shader samples UV * layerScale. Scale the offset by the same
+      // amount so a world-space feature travels at the authored speed on
+      // every frequency layer.
+      const sampleUvPerSecond =
+        config.flowWorldUnitsPerSecond
+        * config.layerSpeedMultipliers[layer]
+        * config.layerScales[layer]
+        / config.tileWorldSize;
+      const offset = this.liquidFlowOffsetUniforms[layer].value;
+      offset.set(
+        wrapRepeat(offset.x + layerDirectionX * sampleUvPerSecond * dtSec),
+        wrapRepeat(offset.y + layerDirectionZ * sampleUvPerSecond * dtSec),
+      );
+    }
+  }
+
   update(
     dtSec: number,
     _graphicsConfig: GraphicsConfig,
     _frameState?: RenderFrameState3D,
-    _sharedRenderGrid?: unknown,
+    wind?: LiquidFlowWind,
   ): void {
     const liquidSurfaceMode = getLiquidSurfaceMode();
     if (liquidSurfaceMode !== this.lastLiquidSurfaceMode) {
@@ -866,18 +953,7 @@ export class WaterRenderer3D {
       this.waterCurtainMaterial.opacity = opacity;
       this.lastOpacity = opacity;
     }
-    if (Number.isFinite(dtSec) && dtSec > 0) {
-      if (liquidSurfaceMode === 'lava') {
-        this.lavaTimeUniform.value = (this.lavaTimeUniform.value + dtSec) % 10_000;
-      } else {
-        this.liquidTexture.offset.x = (
-          this.liquidTexture.offset.x + this.liquidTextureScrollUvPerSecond.x * dtSec
-        ) % 1;
-        this.liquidTexture.offset.y = (
-          this.liquidTexture.offset.y + this.liquidTextureScrollUvPerSecond.y * dtSec
-        ) % 1;
-      }
-    }
+    this.advanceLiquidFlow(dtSec, wind);
     this.setVisible(true);
     this.setTriangleDebugVisible(getWaterTriangleDebug());
   }

@@ -369,9 +369,26 @@ type LiquidSurfaceTextureConfig = {
   readonly resolution: number;
   readonly tileWorldSize: number;
   readonly contrast: number;
-  readonly scrollWorldUnitsPerSecondX: number;
-  readonly scrollWorldUnitsPerSecondZ: number;
+  readonly flowWorldUnitsPerSecond: number;
+  readonly directionWiggleRadians: number;
+  readonly layerScales: readonly [number, number, number];
+  readonly layerSpeedMultipliers: readonly [number, number, number];
+  readonly wigglePeriodsSeconds: readonly [number, number, number];
 };
+
+function readPositiveConfigTriple(
+  value: unknown,
+  fieldName: string,
+): readonly [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new Error(`${fieldName} must contain exactly three numbers`);
+  }
+  return [
+    readPositiveConfigNumber(value[0], `${fieldName}[0]`),
+    readPositiveConfigNumber(value[1], `${fieldName}[1]`),
+    readPositiveConfigNumber(value[2], `${fieldName}[2]`),
+  ];
+}
 
 function readLiquidSurfaceTextureConfig(
   value: Record<string, unknown>,
@@ -381,13 +398,25 @@ function readLiquidSurfaceTextureConfig(
     resolution: readTextureResolutionConfig(value.resolution, `${fieldName}.resolution`),
     tileWorldSize: readPositiveConfigNumber(value.tileWorldSize, `${fieldName}.tileWorldSize`),
     contrast: readUnitIntervalConfig(value.contrast, `${fieldName}.contrast`),
-    scrollWorldUnitsPerSecondX: readPositiveConfigNumber(
-      value.scrollWorldUnitsPerSecondX,
-      `${fieldName}.scrollWorldUnitsPerSecondX`,
+    flowWorldUnitsPerSecond: readPositiveConfigNumber(
+      value.flowWorldUnitsPerSecond,
+      `${fieldName}.flowWorldUnitsPerSecond`,
     ),
-    scrollWorldUnitsPerSecondZ: readPositiveConfigNumber(
-      value.scrollWorldUnitsPerSecondZ,
-      `${fieldName}.scrollWorldUnitsPerSecondZ`,
+    directionWiggleRadians: readPositiveConfigNumber(
+      value.directionWiggleDegrees,
+      `${fieldName}.directionWiggleDegrees`,
+    ) * Math.PI / 180,
+    layerScales: readPositiveConfigTriple(
+      value.layerScales,
+      `${fieldName}.layerScales`,
+    ),
+    layerSpeedMultipliers: readPositiveConfigTriple(
+      value.layerSpeedMultipliers,
+      `${fieldName}.layerSpeedMultipliers`,
+    ),
+    wigglePeriodsSeconds: readPositiveConfigTriple(
+      value.wigglePeriodsSeconds,
+      `${fieldName}.wigglePeriodsSeconds`,
     ),
   };
 }
@@ -406,8 +435,8 @@ export const WATER_RENDER_CONFIG = {
 
 /** LIQUID = LAVA replacement surface. Always opaque (nothing sees through
  *  molten rock) and authored ABOVE the display range: the emissive scale is
- *  applied before tone mapping while the renderer counter-flows two scales of
- *  generated crust, leaving dark plates around pulsing orange fissures. */
+ *  applied before tone mapping while the renderer wind-advects three scales
+ *  of generated crust, leaving dark plates around pulsing orange fissures. */
 export const LAVA_RENDER_CONFIG = {
   color: COLORS.world.water.lava.colorHex,
   emissiveScale: COLORS.world.water.lava.emissiveScale,

@@ -182,6 +182,7 @@ export class ShieldImpactRenderer3D {
     simZ: number,
     normal: { x: number; y: number; z: number },
     playerId: PlayerId | undefined,
+    colorOverride?: number,
   ): void {
     if (!this.visible) return;
     this.drawStateClear = false;
@@ -191,7 +192,7 @@ export class ShieldImpactRenderer3D {
       this.impacts.pop();
     }
 
-    const color = this.resolveColor(playerId);
+    const color = colorOverride ?? this.resolveColor(playerId);
     const nx = Number.isFinite(normal.x) ? normal.x : 0;
     const ny = Number.isFinite(normal.y) ? normal.y : 0;
     const nz = Number.isFinite(normal.z) ? normal.z : 1;
