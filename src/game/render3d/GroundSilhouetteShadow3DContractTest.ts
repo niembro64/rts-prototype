@@ -241,9 +241,9 @@ export function runGroundSilhouetteShadow3DContractTest(): void {
       config.environmentLight.default === 150 &&
         config.ambientLight.default === 1500 &&
         config.directionalLight.default === 1500 &&
-        config.skyLight.default === 1500 &&
+        config.skyLight.default === 15 &&
         config.exposure.default === 15,
-      `${mode} lighting must default to ENV 150, AMB 1500, SUN 1500, SKY 1500, EXPO 15`,
+      `${mode} lighting must default to ENV 150, AMB 1500, SUN 1500, SKY 15, EXPO 15`,
     );
     assertContract(
       !config.terrainBakedLighting.default,

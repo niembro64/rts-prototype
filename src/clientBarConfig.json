@@ -74,8 +74,8 @@
     "realDefault": 1500
   },
   "skyLight": {
-    "demoDefault": 1500,
-    "realDefault": 1500
+    "demoDefault": 15,
+    "realDefault": 15
   },
   "exposure": {
     "demoDefault": 15,
