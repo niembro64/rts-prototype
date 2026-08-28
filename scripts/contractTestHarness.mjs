@@ -62,10 +62,22 @@ for (const m of initSource.slice(blockStart).matchAll(/const \{\s*([^}]+?)\s*,?\
 
 // Tests that own an authoritative backend or process-wide sim/terrain slabs,
 // so they cannot share a page with the lobby's background battle.
+//
+// The turret fixtures below belong here for a subtler reason: they build a
+// bare WorldState whose entity ids overlap the live battle's, and the
+// entity-slot registry is keyed by id — slotForEntity REBINDS a colliding
+// slot to whichever entity presented it last, so the battle's stamping pass
+// overwrites the fixture's slab row (chassis yaw, surface normal) mid-test.
+// Whether that bites depends on what the battle happens to contain when the
+// suite reaches them, which is why they passed for weeks and then failed on
+// an unrelated sim change.
 const EXCLUSIVE_SIM_SLOT_TESTS = new Set([
   'runDeterministicLockstepBackendContractTest',
   'runSnapshotVisibilityContractTest',
   'runUnitWaterSurfaceDynamicsContractTest',
+  'runTurretHostIntegrationContractTest',
+  'runBuildingTurretRestContractTest',
+  'runTurretRestSlopePitchContractTest',
 ]);
 
 const selected = registered.filter(({ fn }) => (only === null ? true : fn.toLowerCase().includes(only.toLowerCase())));

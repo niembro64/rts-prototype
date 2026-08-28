@@ -1,0 +1,5 @@
+1) splashes in water should look like water, splashes in lava should look like lava.
+
+
+2) Let's try to make both lava and water movegenerally in teh direction of the wind (x/y wind). We should have some sinusoidal variance though maybe three textures that wiggle around at prime numbers around that direction of the wind, such that the waves are not always so clean.
+
