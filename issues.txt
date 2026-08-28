@@ -1,3 +1,4 @@
 1) let's make all universal fabricators 2.2x off the ground compared to their tallest unit (as per the unit's top part off of the ground)
 
-2)
+2) our "dragonfly" unit take too long to get to its target (for the dropping weapon). Either that or we need to make the dropping weapon have more range. Ideally it just gets there a bit faster - it's interesting to be so different.
+
